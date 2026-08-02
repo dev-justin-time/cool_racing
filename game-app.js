@@ -7,6 +7,9 @@ const CONTROL_MODES = isTouch ? ["touch", "tilt"] : ["keyboard", "mouse"];
 const DEFAULT_MODE = isTouch ? "touch" : "keyboard";
 const REPLAY_KEY = "ool-replay";
 const REPLAY_STORE = "race-Cityscape-replay";
+const QUALITY_KEY = "ool-quality";
+// Quality tiers mirror the engine ladder (0 = LOW half-res, 1 = MID, 2 = HIGH
+// full textures, 3 = ULTRA bloom/shadows/trails); options live in index.html.
 let game = null;
 let runSubmitted = false;
 let bestRun = null;
@@ -45,6 +48,44 @@ function applyMuted() {
   if (window.bkcore?.Audio?.setMuted) bkcore.Audio.setMuted(muted);
   const label = $("mute-label");
   if (label) label.textContent = muted ? "SOUND OFF" : "SOUND ON";
+  const soundOption = $("settings-sound");
+  if (soundOption) {
+    soundOption.classList.toggle("is-off", muted);
+    soundOption.setAttribute("aria-checked", muted ? "false" : "true");
+    $("settings-sound-label").textContent = muted ? "OFF" : "ON";
+  }
+}
+
+// Quality setting: persisted 0-3, or the device default when unset/unreadable.
+function qualitySetting() {
+  // NB: Number(null) is 0, so guard the raw key before coercing — a missing
+  // key must fall through to the device default, not silently become LOW.
+  try {
+    const raw = localStorage.getItem(QUALITY_KEY);
+    if (raw != null) {
+      const stored = Number(raw);
+      if (Number.isInteger(stored) && stored >= 0 && stored <= 3) return stored;
+    }
+  } catch (_) { /* storage blocked */ }
+  return isTouch ? 1 : 3;
+}
+
+function openSettings() {
+  const current = qualitySetting();
+  document.querySelectorAll(".quality-option[data-quality]").forEach((option) => {
+    const selected = Number(option.dataset.quality) === current;
+    option.classList.toggle("is-selected", selected);
+    option.setAttribute("aria-checked", selected ? "true" : "false");
+  });
+  $("settings-panel").classList.remove("is-hidden");
+}
+
+function setQuality(value) {
+  try { localStorage.setItem(QUALITY_KEY, String(value)); } catch (_) { /* storage blocked */ }
+  // Quality is baked in at engine init (materials, composer passes, resolution),
+  // so apply by rebooting straight into the race like the control toggle does.
+  setAutoLaunch();
+  window.location.reload();
 }
 
 function toggleMute() {
@@ -512,7 +553,7 @@ function bootGame() {
         touch: "Touch zones steer · tap TILT to use device motion",
         tilt: "Tilt to steer · hold to accelerate"
       }[effectiveMode] || "");
-  const quality = isTouch ? 1 : 3;
+  const quality = qualitySetting();
   const controlType = effectiveMode === "tilt" ? 4 : 0;
   game = new bkcore.hexgl.HexGL({
     document,
@@ -611,6 +652,14 @@ $("control-toggle").addEventListener("click", async () => {
 $("credits-button").addEventListener("click", () => $("credits-panel").classList.remove("is-hidden"));
 $("close-credits").addEventListener("click", () => $("credits-panel").classList.add("is-hidden"));
 $("credits-panel").addEventListener("click", (event) => { if (event.target.id === "credits-panel") event.currentTarget.classList.add("is-hidden"); });
+$("settings-button").addEventListener("click", openSettings);
+$("pause-settings-button").addEventListener("click", openSettings);
+$("settings-close").addEventListener("click", () => $("settings-panel").classList.add("is-hidden"));
+$("settings-panel").addEventListener("click", (event) => { if (event.target.id === "settings-panel") event.currentTarget.classList.add("is-hidden"); });
+document.querySelectorAll(".quality-option[data-quality]").forEach((option) => {
+  option.addEventListener("click", () => setQuality(Number(option.dataset.quality)));
+});
+$("settings-sound").addEventListener("click", toggleMute);
 window.addEventListener("pagehide", () => multiplayer.stopPresence());
 
 if (isTouch) $("control-note").textContent = "Touch zones steer · tap TILT to use device motion";
@@ -652,13 +701,22 @@ window.addEventListener("resize", () => {
 // Pause menu. ESC is captured before the engine's ESC-to-reset handler.
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape" && event.keyCode !== 27) return;
-  if (!game) return;
-  event.preventDefault();
-  event.stopPropagation();
+  // Modal panels close first, even before a game exists (settings is reachable from the launch screen).
+  if (!$("settings-panel").classList.contains("is-hidden")) {
+    event.preventDefault();
+    event.stopPropagation();
+    $("settings-panel").classList.add("is-hidden");
+    return;
+  }
   if (!$("credits-panel").classList.contains("is-hidden")) {
+    event.preventDefault();
+    event.stopPropagation();
     $("credits-panel").classList.add("is-hidden");
     return;
   }
+  if (!game) return;
+  event.preventDefault();
+  event.stopPropagation();
   if (paused) setPaused(false);
   else if (canPause()) setPaused(true);
 }, true);

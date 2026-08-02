@@ -26,7 +26,7 @@ button { color: inherit; }
 #launch-screen { display: grid; place-items: center; background: radial-gradient(circle at 50% 45%, #153841 0%, #08151b 36%, #04090d 78%); }
 .launch-grid { position: absolute; inset: 0; opacity: .23; background-image: linear-gradient(rgba(125,232,227,.15) 1px, transparent 1px), linear-gradient(90deg, rgba(125,232,227,.15) 1px, transparent 1px); background-size: 72px 72px; transform: perspective(520px) rotateX(60deg) scale(1.9) translateY(28%); transform-origin: center bottom; mask-image: linear-gradient(to top, #000, transparent 80%); }
 .launch-grid::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(120deg, transparent 0 90px, rgba(111,247,238,.2) 91px 92px, transparent 93px 180px); }
-.brand-lockup, .launch-card, #credits-button { position: relative; z-index: 1; }
+.brand-lockup, .launch-card, .launch-footer { position: relative; z-index: 1; }
 .brand-lockup { position: absolute; left: clamp(24px, 8vw, 120px); top: clamp(44px, 12vh, 120px); }
 .eyebrow { color: var(--cyan); font: 12px/1 Bebas, sans-serif; letter-spacing: .22em; }
 .brand-lockup h1 { margin: 10px 0 0; font: clamp(94px, 18vw, 250px)/.72 Bebas, sans-serif; letter-spacing: -.06em; text-shadow: 0 0 36px rgba(111,247,238,.25); }
@@ -38,7 +38,8 @@ button { color: inherit; }
 .primary-button span { float: right; font-size: 20px; line-height: 12px; }
 .primary-button:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(111,247,238,.18); }
 .control-note { padding: 14px 4px 2px; color: var(--muted); font-size: 11px; }
-.text-button { position: absolute; bottom: 28px; border: 0; padding: 10px; color: var(--muted); background: transparent; cursor: pointer; font-size: 11px; }
+.launch-footer { position: absolute; left: 0; right: 0; bottom: 28px; display: flex; justify-content: center; gap: 28px; }
+.text-button { border: 0; padding: 10px; color: var(--muted); background: transparent; cursor: pointer; font-size: 11px; transition: color .15s ease; }
 .text-button:hover, .modal-card a { color: var(--cyan); }
 
 #race-screen { background: #020609; }
@@ -126,6 +127,23 @@ button { color: inherit; }
 .modal-small { margin-bottom: 0; font-size: 11px !important; }
 .close-button { position: absolute; top: 12px; right: 12px; border: 0; background: transparent; color: var(--muted); font-size: 28px; cursor: pointer; }
 
+.settings-card { width: min(540px, 100%); }
+.settings-card h2 { margin-bottom: 2px; }
+.settings-note { margin-top: 0; font-size: 12px; }
+.settings-options { display: grid; gap: 8px; margin-top: 20px; }
+.quality-option { display: flex; align-items: center; gap: 13px; width: 100%; border: 1px solid var(--line); padding: 12px 14px; background: rgba(111,247,238,.03); color: var(--ink); text-align: left; cursor: pointer; transition: border-color .15s ease, background .15s ease, transform .15s ease; }
+.quality-option:hover { border-color: rgba(111,247,238,.55); background: rgba(111,247,238,.08); transform: translateX(2px); }
+.quality-option.is-selected { border-color: var(--cyan); background: rgba(111,247,238,.1); box-shadow: inset 3px 0 0 var(--cyan), 0 0 24px rgba(111,247,238,.08); }
+.quality-dot { flex: 0 0 12px; width: 12px; height: 12px; border: 1px solid rgba(111,247,238,.45); border-radius: 50%; background: transparent; transition: background .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.quality-option.is-selected .quality-dot { background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+.quality-copy { display: grid; gap: 2px; min-width: 0; }
+.quality-copy b { font: 16px/1 Bebas, sans-serif; letter-spacing: .14em; }
+.quality-copy em { color: var(--muted); font-size: 11px; font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quality-option.is-selected .quality-copy b { color: var(--cyan); }
+.quality-option.is-off .quality-dot { border-color: rgba(233,245,244,.25); }
+.quality-option.is-off .quality-copy b { color: var(--muted); }
+.settings-divider { height: 1px; margin: 16px 0 6px; background: var(--line); }
+
 @media (max-width: 760px) {
   .brand-lockup { top: 60px; left: 24px; }
   .brand-lockup h1 { font-size: 120px; }
@@ -141,6 +159,7 @@ button { color: inherit; }
   .personal-best { padding-top: 6px; font-size: 10px; }
   .race-topbar { top: 9px; left: 9px; right: 9px; }
   .ghost-delta { top: 26px; left: 12px; font-size: 10px; padding: 3px 7px; }
+  .quality-copy em { white-space: normal; }
   .replay-badge { top: 26px; right: 12px; font-size: 10px; padding: 3px 7px; }
   .race-bottom { display: none; }
   .race-status { gap: 5px; font-size: 9px; }
