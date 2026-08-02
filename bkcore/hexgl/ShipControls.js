@@ -119,135 +119,11 @@ bkcore.hexgl.ShipControls = function(ctx)
 		right: false
 	};
 
-	this.touchController = null;
-	this.orientationController = null;
-	this.gamepadController = null
-
-	if(ctx.controlType == 1 && bkcore.controllers.TouchController.isCompatible())
-	{
-		this.touchController = new bkcore.controllers.TouchController(
-			domElement, ctx.width/2,
-			function(state, touch, event){
-				if(event.touches.length >= 4)
-					window.location.reload(false);
-				else if(event.touches.length == 3)
-					ctx.restart();
-				// touch was on the right-hand side of the screen
-				else if (touch.clientX > (ctx.width / 2)) {
-					if (event.type === 'touchend')
-						self.key.forward = false;
-					else
-						self.key.forward = true;
-				}
-			});
-	}
-	else if(ctx.controlType == 4 && bkcore.controllers.OrientationController.isCompatible())
-	{
-		this.orientationController = new bkcore.controllers.OrientationController(
-			domElement, true,
-			function(state, touch, event){
-				if(event.touches.length >= 4)
-					window.location.reload(false);
-				else if(event.touches.length == 3)
-					ctx.restart();
-				else if(event.touches.length < 1)
-					self.key.forward = false;
-				else
-					self.key.forward = true;
-			});
-	}
-	else if(ctx.controlType == 3 && bkcore.controllers.GamepadController.isCompatible())
-	{
-		this.gamepadController = new bkcore.controllers.GamepadController(
-      function(controller){
-        if (controller.select)
-          ctx.restart();
-        else
-          self.key.forward = controller.acceleration > 0;
-          self.key.ltrigger = controller.ltrigger > 0;
-          self.key.rtrigger = controller.rtrigger > 0;
-          self.key.left = controller.lstickx < -0.1;
-          self.key.right = controller.lstickx > 0.1;
-      });
-	}
-	else if(ctx.controlType == 2)
-	{
-		if(Leap == null)
-			throw new Error("Unable to reach LeapJS!");
-
-		var leapInfo = this.leapInfo = document.getElementById('leapinfo');
-		isServerConnected = false;
-		var lb = this.leapBridge = {
-			isConnected: true,
-			hasHands: false,
-			palmNormal: [0, 0, 0]
-		};
-
-		function updateInfo()
-		{
-			if(!isServerConnected)
-			{
-				leapInfo.innerHTML = 'Waiting for the Leap Motion Controller server...'
-				leapInfo.style.display = 'block';
-			}
-			else if(lb.isConnected && lb.hasHands)
-			{
-				leapInfo.style.display = 'none';
-			}
-			else if(!lb.isConnected)
-			{
-				leapInfo.innerHTML = 'Please connect your Leap Motion Controller.'
-				leapInfo.style.display = 'block';
-			}
-			else if(!lb.hasHands)
-			{
-				leapInfo.innerHTML = 'Put your hand over the Leap Motion Controller to play.'
-				leapInfo.style.display = 'block';
-			}
-		}
-		updateInfo();
-
-		var lc = this.leapController =  new Leap.Controller({enableGestures: false});
-		lc.on('connect', function()
-		{
-			isServerConnected = true;
-			updateInfo();
-		});
-		lc.on('deviceConnected', function()
-		{
-			lb.isConnected = true;
-			updateInfo();
-		});
-		lc.on('deviceDisconnected', function()
-		{
-			lb.isConnected = false;
-			updateInfo();
-		});
-		lc.on('frame', function(frame)
-		{
-			if(!lb.isConnected) return;
-		  hand = frame.hands[0];
-			if(typeof hand === 'undefined')
-			{
-				if(lb.hasHands)
-				{
-					lb.hasHands = false;
-					updateInfo();
-				}
-				lb.palmNormal = [0, 0, 0];
-			}
-			else
-			{
-				if(!lb.hasHands)
-				{
-					lb.hasHands = true;
-					updateInfo();
-				}
-				lb.palmNormal = hand.palmNormal;
-			}
-		});
-		lc.connect();
-	}
+	// Input is driven entirely by the shell (game-app.js): keyboard/mouse/touch
+	// set this.key.*, tilt sets this.tiltAmount (analog -1..1, derived from the
+	// deviceorientation beta), gamepad sets this.key.*. The legacy
+	// bkcore.controllers.* / Leap Motion branches were removed in the prune.
+	this.tiltAmount = 0;
 
 	function onKeyDown(event)
 	{
@@ -378,36 +254,15 @@ bkcore.hexgl.ShipControls.prototype.update = function(dt)
 
 	var rollAmount = 0.0;
 	var angularAmount = 0.0;
-	var yawLeap = 0.0;
 
-	if(this.leapBridge != null && this.leapBridge.hasHands)
-	{
-		rollAmount -= this.leapBridge.palmNormal[0] * 3.5 * this.rollAngle;
-		yawLeap = -this.leapBridge.palmNormal[2] * 0.6;
-	}
 
 	if(this.active)
 	{
 
-		if(this.touchController != null)
+		if(this.tiltAmount != 0)
 		{
-			angularAmount -= this.touchController.stickVector.x/100 * this.angularSpeed * dt;
-			rollAmount += this.touchController.stickVector.x/100 * this.rollAngle;
-		}
-		else if(this.orientationController != null)
-		{
-			angularAmount += this.orientationController.beta/45 * this.angularSpeed * dt;
-			rollAmount -= this.orientationController.beta/45 * this.rollAngle;
-		}
-		else if(this.gamepadController != null && this.gamepadController.updateAvailable())
-		{
-			angularAmount -= this.gamepadController.lstickx * this.angularSpeed * dt;
-			rollAmount += this.gamepadController.lstickx * this.rollAngle;
-		}
-		else if(this.leapBridge != null && this.leapBridge.hasHands)
-		{
-			angularAmount += this.leapBridge.palmNormal[0] * 2 * this.angularSpeed * dt;
-			this.speed += Math.max(0.0, (0.5 + this.leapBridge.palmNormal[2])) * 3 * this.thrust * dt;
+			angularAmount += this.tiltAmount * this.angularSpeed * dt;
+			rollAmount -= this.tiltAmount * this.rollAngle;
 		}
 		else
 		{
@@ -510,7 +365,7 @@ bkcore.hexgl.ShipControls.prototype.update = function(dt)
 		this.mesh.matrix.identity();
 
 		// Gradient (Mesh only, no dummy physics impact)
-		var gradientDelta = (this.gradientTarget - (yawLeap + this.gradient)) * this.gradientLerp;
+		var gradientDelta = (this.gradientTarget - this.gradient) * this.gradientLerp;
 		if(Math.abs(gradientDelta) > this.epsilon) this.gradient += gradientDelta;
 		if(Math.abs(this.gradient) > this.epsilon)
 		{
@@ -597,8 +452,6 @@ bkcore.hexgl.ShipControls.prototype.boosterCheck = function(dt)
 
 	var x = Math.round(this.collisionMap.pixels.width/2 + this.dummy.position.x * this.collisionPixelRatio);
 	var z = Math.round(this.collisionMap.pixels.height/2 + this.dummy.position.z * this.collisionPixelRatio);
-	var pos = new THREE.Vector3(x, 0, z);
-
 	var color = this.collisionMap.getPixel(x, z);
 
 	if(color.r == 255 && color.g < 127 && color.b < 127) {
@@ -623,7 +476,8 @@ bkcore.hexgl.ShipControls.prototype.collisionCheck = function(dt)
 
 	var x = Math.round(this.collisionMap.pixels.width/2 + this.dummy.position.x * this.collisionPixelRatio);
 	var z = Math.round(this.collisionMap.pixels.height/2 + this.dummy.position.z * this.collisionPixelRatio);
-	var pos = new THREE.Vector3(x, 0, z);
+	if(this._checkPos == null) this._checkPos = new THREE.Vector3();
+	var pos = this._checkPos.set(x, 0, z);
 
 	//console.log({c: this.collisionMap.getPixel(414, 670), d: this.dummy.position, x: x, y: y, p: this.collisionMap.getPixel(x, y)})
 

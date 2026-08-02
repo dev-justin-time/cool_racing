@@ -48,6 +48,10 @@ bkcore.hexgl.HexGL = function(opts)
 		this.height /=2;
 	}
 
+	// HiDPI: render at devicePixelRatio (capped at 2) for a crisper frame.
+	// The canvas CSS size stays at CSS pixels; only the backing store scales.
+	this.dpr = Math.min(2, window.devicePixelRatio || 1);
+
 	this.settings = null;
 	this.renderer = null;
 	this.manager = null;
@@ -150,13 +154,18 @@ bkcore.hexgl.HexGL.prototype.resize = function(w, h)
 {
 	this.width = w;
 	this.height = h;
+	this.dpr = Math.min(2, window.devicePixelRatio || 1);
 
 	// quality 0 renders at half resolution; keep that behavior on resize
 	var scale = this.quality === 0 ? 2 : 1;
 	var rw = Math.max(1, w / scale);
 	var rh = Math.max(1, h / scale);
+	var pw = Math.max(1, Math.round(rw * this.dpr));
+	var ph = Math.max(1, Math.round(rh * this.dpr));
 
-	this.renderer.setSize(rw, rh);
+	this.renderer.setSize(pw, ph);
+	this.renderer.domElement.style.width = rw + "px";
+	this.renderer.domElement.style.height = rh + "px";
 
 	var camera = this.components.cameraChase != null ? this.components.cameraChase.camera : null;
 	if(camera != null)
@@ -183,9 +192,9 @@ bkcore.hexgl.HexGL.prototype.resize = function(w, h)
 		// (this Three build has no WebGLRenderTarget.setSize/dispose).
 		var params = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBFormat, stencilBuffer: false };
 		var rt = this._resizeRT;
-		if(rt == null || rt.width !== rw || rt.height !== rh)
+		if(rt == null || rt.width !== pw || rt.height !== ph)
 		{
-			rt = new THREE.WebGLRenderTarget(rw, rh, params);
+			rt = new THREE.WebGLRenderTarget(pw, ph, params);
 			this._resizeRT = rt;
 		}
 		this.composers.game.reset(rt);
@@ -193,9 +202,9 @@ bkcore.hexgl.HexGL.prototype.resize = function(w, h)
 
 	if(this.extras.hex != null)
 	{
-		this.extras.hex.uniforms[ 'size' ].value = 512.0 * (rw/1633);
-		this.extras.hex.uniforms[ 'rx' ].value = rw;
-		this.extras.hex.uniforms[ 'ry' ].value = rh;
+		this.extras.hex.uniforms[ 'size' ].value = 512.0 * (rw*this.dpr/1633);
+		this.extras.hex.uniforms[ 'rx' ].value = pw;
+		this.extras.hex.uniforms[ 'ry' ].value = ph;
 	}
 }
 
@@ -307,17 +316,6 @@ bkcore.hexgl.HexGL.prototype.displayScore = function(f, l)
 				dr != undefined && (dr.innerHTML = "Well done!");
 			}
 		}
-		// ladder record
-		var p = bkcore.hexgl.Ladder.global[t][d][bkcore.hexgl.Ladder.global[t][d].length-2];
-		if(p != undefined && p['score'] > f)
-		{
-			dh != undefined && (dh.innerHTML = "You made it to the HOF!");
-		}
-		else
-		{
-			dh != undefined && (dh.innerHTML = "Hall Of Fame");
-		}
-
 		dt != undefined && (dt.innerHTML = tf.m + ts[1] + tf.s + ts[2] + tf.ms);
 		dl1 != undefined && (dl1.innerHTML = tl[0]["m"] != undefined ? tl[0].m + ts[1] + tl[0].s + ts[2] + tl[0].ms : "-");
 		dl2 != undefined && (dl2.innerHTML = tl[1]["m"] != undefined ? tl[1].m + ts[1] + tl[1].s + ts[2] + tl[1].ms : "-");
@@ -344,8 +342,6 @@ bkcore.hexgl.HexGL.prototype.displayScore = function(f, l)
 		+'&p[summary]='+encodeURIComponent('HexGL is a futuristic racing game built by Thibaut Despoulain (BKcore) using HTML5, Javascript and WebGL. Come challenge your friends on this fast-paced 3D game!')
 		+'&p[url]='+encodeURIComponent('http://hexgl.bkcore.com')
 		+'&p[images][0]='+encodeURIComponent('http://hexgl.bkcore.com/image.png'));
-
-	bkcore.hexgl.Ladder.displayLadder('finish-ladder', t, d, 8);
 
 	if(this.manager.get('game').objects.lowFPS >= 999)
 		sl != undefined && (sl.innerHTML = 'Note: Your framerate was pretty low, you should try a lesser graphic setting!');
@@ -374,7 +370,12 @@ bkcore.hexgl.HexGL.prototype.initRenderer = function()
 
 	renderer.autoClear = false;
 	renderer.sortObjects = false;
-	renderer.setSize( this.width, this.height );
+	// Render at devicePixelRatio: bigger backing store, CSS size unchanged.
+	var pw = Math.max(1, Math.round(this.width * this.dpr));
+	var ph = Math.max(1, Math.round(this.height * this.dpr));
+	renderer.setSize( pw, ph );
+	renderer.domElement.style.width = this.width + "px";
+	renderer.domElement.style.height = this.height + "px";
 	renderer.domElement.style.position = "relative";
 
 	this.containers.main.appendChild( renderer.domElement );
@@ -400,7 +401,7 @@ bkcore.hexgl.HexGL.prototype.initHUD = function()
 bkcore.hexgl.HexGL.prototype.initGameComposer = function()
 {
 	var renderTargetParameters = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBFormat, stencilBuffer: false };
-	var renderTarget = new THREE.WebGLRenderTarget( this.width, this.height, renderTargetParameters );
+	var renderTarget = new THREE.WebGLRenderTarget( Math.max(1, Math.round(this.width * this.dpr)), Math.max(1, Math.round(this.height * this.dpr)), renderTargetParameters );
 
 	// GAME COMPOSER
 	var renderSky = new THREE.RenderPass( this.manager.get("sky").scene, this.manager.get("sky").camera );
@@ -415,9 +416,9 @@ bkcore.hexgl.HexGL.prototype.initGameComposer = function()
 	var effectVignette = new THREE.ShaderPass( THREE.ShaderExtras[ "vignette" ] );
 
 	var effectHex = new THREE.ShaderPass( bkcore.threejs.Shaders[ "hexvignette" ] );
-	effectHex.uniforms[ 'size' ].value = 512.0 * (this.width/1633);
-	effectHex.uniforms[ 'rx' ].value = this.width;
-	effectHex.uniforms[ 'ry' ].value = this.height;
+	effectHex.uniforms[ 'size' ].value = 512.0 * (this.width*this.dpr/1633);
+	effectHex.uniforms[ 'rx' ].value = this.width*this.dpr;
+	effectHex.uniforms[ 'ry' ].value = this.height*this.dpr;
 	effectHex.uniforms[ 'tHex' ].texture = this.track.lib.get("textures", "hex");
 	effectHex.uniforms[ 'color' ].value = this.extras.vignetteColor;
 
@@ -457,6 +458,28 @@ bkcore.hexgl.HexGL.prototype.initGameComposer = function()
 	else
 		this.composers.game.addPass( effectScreen );
 }
+
+// FPS auto-downgrade: turns off the heavy ULTRA-only features live (bloom pass,
+// shadow maps, ship particle trails) without a restart. The shell persists a
+// lower quality tier so the next boot starts leaner.
+bkcore.hexgl.HexGL.prototype.softDowngrade = function()
+{
+	if(this.downgraded) return;
+	if(this.quality < 3) return; // nothing ULTRA-only to turn off
+	this.downgraded = true;
+
+	if(this.renderer != null)
+	{
+		this.renderer.shadowMapEnabled = false;
+		this.renderer.shadowMapSoft = false;
+	}
+
+	if(this.extras.bloom != null)
+		this.extras.bloom.enabled = false;
+
+	if(this.components.shipEffects != null)
+		this.components.shipEffects.destroy();
+};
 
 bkcore.hexgl.HexGL.prototype.createMesh = function(parent, geometry, x, y, z, mat)
 {

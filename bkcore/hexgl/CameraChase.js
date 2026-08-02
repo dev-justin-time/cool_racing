@@ -32,6 +32,10 @@ bkcore.hexgl.CameraChase = function(opts)
 	this.viewOffset = opts.viewOffset == undefined ? 10.0 : opts.viewOffset;
 	this.orbitOffset = 12;
 	this.lerp = opts.lerp == undefined ? 0.5 : opts.lerp;
+	// V4: FOV kick at speed + camera shake while boosting (game feel).
+	this.baseFov = this.camera.fov;
+	this.speedFovKick = opts.speedFovKick == undefined ? 6.0 : opts.speedFovKick;
+	this.boostRatio = opts.boostRatio == undefined ? null : opts.boostRatio;
 	this.time = 0.0;
 }
 
@@ -54,6 +58,19 @@ bkcore.hexgl.CameraChase.prototype.update = function(dt, ratio)
 		this.camera.position.copy(this.target);
 		
 		this.camera.lookAt(this.dir.normalize().multiplyScalar(this.viewOffset).addSelf(this.targetObject.position));
+
+		// V4: widen the FOV slightly at high speed; micro-jitter while boosting.
+		this.camera.fov = this.baseFov + this.speedFovKick * ratio;
+		this.camera.updateProjectionMatrix();
+		if(this.boostRatio != null)
+		{
+			var br = this.boostRatio();
+			if(br > 0.01)
+			{
+				this.camera.position.x += (Math.random() - 0.5) * 0.5 * br;
+				this.camera.position.y += (Math.random() - 0.5) * 0.3 * br;
+			}
+		}
 	}
 	else if(this.mode == this.modes.ORBIT)
 	{

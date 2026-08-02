@@ -85,9 +85,19 @@ button { color: inherit; }
 .ghost-delta.ahead { color: var(--cyan); border-color: rgba(111,247,238,.55); }
 .ghost-delta.behind { color: var(--orange); border-color: rgba(255,180,84,.55); }
 .replay-badge { position: absolute; z-index: 7; top: 48px; right: 24px; padding: 4px 9px; border: 1px solid rgba(111,247,238,.45); background: rgba(2,10,14,.72); color: var(--cyan); font: 12px Bebas, sans-serif; letter-spacing: .12em; pointer-events: none; white-space: nowrap; }
+.downgrade-note { position: absolute; z-index: 9; top: 48px; left: 50%; transform: translateX(-50%); padding: 4px 12px; border: 1px solid rgba(255,180,84,.5); background: rgba(40,22,4,.78); color: var(--orange); font: 11px Bebas, sans-serif; letter-spacing: .14em; pointer-events: auto; cursor: pointer; white-space: nowrap; }
+.downgrade-note:hover { border-color: var(--orange); color: #ffd2a8; }
 .wrong-way { position: absolute; z-index: 9; left: 50%; top: 24%; transform: translateX(-50%); padding: 8px 26px 8px 32px; border: 2px solid rgba(255,110,80,.85); background: rgba(64,8,4,.78); box-shadow: 0 0 30px rgba(255,110,80,.25); color: #ff9070; font: clamp(30px, 7vw, 58px)/1 Bebas, sans-serif; letter-spacing: .24em; text-indent: .24em; pointer-events: none; white-space: nowrap; animation: wrongway-flash .8s ease-in-out infinite; }
 @keyframes wrongway-flash { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
-@media (prefers-reduced-motion: reduce) { .wrong-way { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .wrong-way { animation: none; }
+  /* Collapse decorative animations/transitions for motion-sensitive users. */
+  *, *::before, *::after {
+    animation-duration: .001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001s !important;
+  }
+}
 .floating-label.live { border-color: rgba(255,180,84,.5); color: var(--orange); }
 .finish-laps { display: grid; gap: 5px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font: 13px Bebas, sans-serif; letter-spacing: .08em; }
 .finish-laps div { display: flex; justify-content: space-between; }
@@ -161,6 +171,7 @@ button { color: inherit; }
   .ghost-delta { top: 26px; left: 12px; font-size: 10px; padding: 3px 7px; }
   .quality-copy em { white-space: normal; }
   .replay-badge { top: 26px; right: 12px; font-size: 10px; padding: 3px 7px; }
+  .downgrade-note { top: 26px; font-size: 9px; padding: 3px 8px; }
   .race-bottom { display: none; }
   .race-status { gap: 5px; font-size: 9px; }
   #touch-controls { display: block; position: absolute; inset: 0; z-index: 5; pointer-events: none; }

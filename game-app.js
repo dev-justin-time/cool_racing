@@ -3,7 +3,7 @@ import { database, multiplayer } from "./websim-layer.js";
 const $ = (id) => document.getElementById(id);
 const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 const CONTROL_KEY = "ool-control-mode";
-const CONTROL_MODES = isTouch ? ["touch", "tilt"] : ["keyboard", "mouse"];
+const CONTROL_MODES = isTouch ? ["touch", "tilt"] : ["keyboard", "mouse", "gamepad"];
 const DEFAULT_MODE = isTouch ? "touch" : "keyboard";
 const REPLAY_KEY = "ool-replay";
 const REPLAY_STORE = "race-Cityscape-replay";
@@ -17,6 +17,9 @@ let ghostController = null;
 let paused = false;
 let muted = false;
 let replayMode = false;
+let lastFocused = null;
+let liveGhosts = null;
+let gamepadController = null;
 const MUTE_KEY = "ool-muted";
 
 function formatTime(value) {
@@ -71,13 +74,17 @@ function qualitySetting() {
 }
 
 function openSettings() {
+  lastFocused = document.activeElement;
   const current = qualitySetting();
+  let selectedOption = null;
   document.querySelectorAll(".quality-option[data-quality]").forEach((option) => {
     const selected = Number(option.dataset.quality) === current;
     option.classList.toggle("is-selected", selected);
     option.setAttribute("aria-checked", selected ? "true" : "false");
+    if (selected) selectedOption = option;
   });
   $("settings-panel").classList.remove("is-hidden");
+  (selectedOption || $("settings-close"))?.focus();
 }
 
 function setQuality(value) {
@@ -161,7 +168,7 @@ function controlMode() {
 }
 
 function labelForMode(mode) {
-  return { keyboard: "KEYS", mouse: "MOUSE", touch: "TOUCH", tilt: "TILT" }[mode] || "KEYS";
+  return { keyboard: "KEYS", mouse: "MOUSE", touch: "TOUCH", tilt: "TILT", gamepad: "PAD" }[mode] || "KEYS";
 }
 
 function setupMouseControls(hex) {
@@ -234,8 +241,12 @@ function setupMobileControls(hex, mode) {
   const updateKeys = () => {
     ship.key.forward = pressed.accelerate;
     ship.key.brake = pressed.brake;
-    ship.key.left = mode === "touch" && joystickX < -.2;
-    ship.key.right = mode === "touch" && joystickX > .2;
+    // Tilt mode steers through ship.tiltAmount (setupTiltControls); the joystick
+    // is pointer-events:none there, so never clobber left/right with its 0.
+    if (mode === "touch") {
+      ship.key.left = joystickX < -.2;
+      ship.key.right = joystickX > .2;
+    }
   };
   const resetJoystick = () => {
     joystickPointer = null;
@@ -316,20 +327,91 @@ function setupMobileControls(hex, mode) {
   joystick.style.pointerEvents = mode === "tilt" ? "none" : "auto";
 }
 
+// Shell-side analog tilt steering (replaces the engine's legacy
+// OrientationController). Maps deviceorientation beta to ship.tiltAmount
+// (-1..1) after an initial calibration frame, mirroring the old beta/45 curve.
+function setupTiltControls(hex) {
+  const ship = hex.components.shipControls;
+  let dbeta = null;
+  let active = true;
+  const onOrientation = (event) => {
+    if (!active || event.beta == null) return;
+    if (dbeta == null) dbeta = event.beta;
+    ship.tiltAmount = Math.max(-1, Math.min(1, (event.beta - dbeta) / 45));
+  };
+  window.addEventListener("deviceorientation", onOrientation);
+  hex._tiltCleanup = () => {
+    active = false;
+    ship.tiltAmount = 0;
+    window.removeEventListener("deviceorientation", onOrientation);
+  };
+}
+
+// PAD mode: modern Gamepad API polling inside the game render loop. The engine
+// keeps using its digital key state; this just feeds it from the controller.
+function setupGamepadControls(hex) {
+  const ship = hex.components.shipControls;
+  const renderState = hex.manager.get("game");
+  let connected = false;
+  const release = () => {
+    ship.key.forward = false;
+    ship.key.brake = false;
+    ship.key.left = false;
+    ship.key.right = false;
+    ship.key.ltrigger = false;
+    ship.key.rtrigger = false;
+  };
+  const poll = () => {
+    let pad = null;
+    try {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (let i = 0; i < pads.length; i++) if (pads[i] && pads[i].connected) { pad = pads[i]; break; }
+    } catch (_) { /* gamepad API unavailable */ }
+    if (!pad) {
+      if (connected) { connected = false; release(); }
+      return;
+    }
+    connected = true;
+    const buttons = pad.buttons || [];
+    const axes = pad.axes || [];
+    ship.key.forward = Boolean(buttons[7]?.pressed) || Boolean(buttons[0]?.pressed);
+    ship.key.brake = Boolean(buttons[6]?.pressed) || Boolean(buttons[2]?.pressed);
+    ship.key.ltrigger = Boolean(buttons[4]?.pressed);
+    ship.key.rtrigger = Boolean(buttons[5]?.pressed);
+    const axis = axes[0] != null ? axes[0] : 0;
+    ship.key.left = axis < -0.2 || Boolean(buttons[14]?.pressed);
+    ship.key.right = axis > 0.2 || Boolean(buttons[15]?.pressed);
+  };
+  const originalRender = renderState.render;
+  const wrapped = function(delta, renderer) {
+    poll();
+    return originalRender.call(this, delta, renderer);
+  };
+  renderState.render = wrapped;
+  return {
+    destroy() {
+      if (renderState.render === wrapped) renderState.render = originalRender;
+      release();
+    }
+  };
+}
+
+// Shared scratch vector so projectLabel doesn't allocate per frame (Q5).
+const _projectScratch = new THREE.Vector3();
 function projectLabel(label, object, camera, projector) {
   if (!label || !projector || !object.visible) {
     label?.classList.add("is-hidden");
     return;
   }
-  const point = new THREE.Vector3(object.position.x, object.position.y + 1.5, object.position.z);
-  projector.projectVector(point, camera);
-  if (point.z < -1 || point.z > 1) {
+  _projectScratch.set(object.position.x, object.position.y + 1.5, object.position.z);
+  projector.projectVector(_projectScratch, camera);
+  if (_projectScratch.z < -1 || _projectScratch.z > 1) {
     label.classList.add("is-hidden");
     return;
   }
   label.classList.remove("is-hidden");
-  label.style.left = `${(point.x * .5 + .5) * window.innerWidth}px`;
-  label.style.top = `${(-point.y * .5 + .5) * window.innerHeight - 10}px`;
+  label.style.left = `${(_projectScratch.x * .5 + .5) * window.innerWidth}px`;
+  label.style.top = `${(-_projectScratch.y * .5 + .5) * window.innerHeight - 10}px`;
 }
 
 function attachGhost(hex, record) {
@@ -400,12 +482,15 @@ function attachGhost(hex, record) {
     deltaEl.textContent = `VS GHOST ${formatDelta(deltaMs)}`;
   };
   const originalRender = renderState.render;
-  renderState.render = function(delta, renderer) {
+  const wrapped = function(delta, renderer) {
     update();
     return originalRender.call(this, delta, renderer);
   };
+  renderState.render = wrapped;
   ghostController = {
     destroy() {
+      // Q4: unwrap the render hook so re-attaching never chains wrappers.
+      if (renderState.render === wrapped) renderState.render = originalRender;
       renderState.scene.remove(ghost);
       label.classList.add("is-hidden");
       deltaEl.classList.add("is-hidden");
@@ -455,16 +540,19 @@ function attachLiveGhosts(hex) {
   window.addEventListener("hexgl:presence", (event) => presenceChanged(event.detail));
   if (window.hexglPresenceSnapshot) presenceChanged(window.hexglPresenceSnapshot);
 
-  const update = () => {
+  const update = (delta) => {
+    // Q3: frame-rate-independent smoothing — 1 - exp(-k*dt) instead of a
+    // per-frame 0.22 lerp, so live ghosts don't crawl at low FPS.
+    const t = 1 - Math.exp(-15 * Math.max(0, Number(delta) || 16.6) / 1000);
     Object.values(players).forEach((player) => {
       const target = player.target;
-      player.mesh.position.x += (Number(target.x) - player.mesh.position.x) * .22;
-      player.mesh.position.y += (Number(target.y) - player.mesh.position.y) * .22;
-      player.mesh.position.z += (Number(target.z) - player.mesh.position.z) * .22;
-      player.mesh.quaternion.x += (Number(target.qx) - player.mesh.quaternion.x) * .22;
-      player.mesh.quaternion.y += (Number(target.qy) - player.mesh.quaternion.y) * .22;
-      player.mesh.quaternion.z += (Number(target.qz) - player.mesh.quaternion.z) * .22;
-      player.mesh.quaternion.w += (Number(target.qw) - player.mesh.quaternion.w) * .22;
+      player.mesh.position.x += (Number(target.x) - player.mesh.position.x) * t;
+      player.mesh.position.y += (Number(target.y) - player.mesh.position.y) * t;
+      player.mesh.position.z += (Number(target.z) - player.mesh.position.z) * t;
+      player.mesh.quaternion.x += (Number(target.qx) - player.mesh.quaternion.x) * t;
+      player.mesh.quaternion.y += (Number(target.qy) - player.mesh.quaternion.y) * t;
+      player.mesh.quaternion.z += (Number(target.qz) - player.mesh.quaternion.z) * t;
+      player.mesh.quaternion.w += (Number(target.qw) - player.mesh.quaternion.w) * t;
       player.mesh.quaternion.normalize();
       player.mesh.updateMatrix();
       player.mesh.visible = true;
@@ -472,9 +560,18 @@ function attachLiveGhosts(hex) {
     });
   };
   const originalRender = renderState.render;
-  renderState.render = function(delta, renderer) {
-    update();
+  const wrapped = function(delta, renderer) {
+    update(delta);
     return originalRender.call(this, delta, renderer);
+  };
+  renderState.render = wrapped;
+  // Q4: expose a destroy so the shell can unwrap the hook on finish/quit.
+  return {
+    destroy() {
+      if (renderState.render === wrapped) renderState.render = originalRender;
+      Object.keys(players).forEach((id) => removePlayer(id));
+      window.removeEventListener("hexgl:presence", presenceChanged);
+    }
   };
 }
 
@@ -494,6 +591,11 @@ async function onFinish({ time, lapTimes, result }) {
   $("wrong-way").classList.add("is-hidden");
   $("replay-badge").classList.add("is-hidden");
   multiplayer.stopPresence();
+  if (liveGhosts?.destroy) liveGhosts.destroy();
+  liveGhosts = null;
+  if (gamepadController?.destroy) gamepadController.destroy();
+  gamepadController = null;
+  if (game?._tiltCleanup) game._tiltCleanup();
   showFinish({ time, lapTimes, result });
 }
 
@@ -504,14 +606,45 @@ function publishState() {
   const p = controls.getPosition();
   const q = controls.getQuaternion();
   return {
-    x: Math.round(p.x * 100) / 100,
-    y: Math.round(p.y * 100) / 100,
-    z: Math.round(p.z * 100) / 100,
+    x: Math.round(p.x * 1000) / 1000,
+    y: Math.round(p.y * 1000) / 1000,
+    z: Math.round(p.z * 1000) / 1000,
     qx: Math.round(q.x * 10000) / 10000,
     qy: Math.round(q.y * 10000) / 10000,
     qz: Math.round(q.z * 10000) / 10000,
     qw: Math.round(q.w * 10000) / 10000,
     lap_time: Math.round((gameplay.currentLapTime || 0))
+  };
+}
+
+// FPS auto-downgrade: samples the render loop with an EMA, and after a few
+// seconds of sustained low FPS on ULTRA, soft-disables bloom/shadows/particle
+// trails live and persists a lower tier so the next boot starts leaner.
+function startFpsWatchdog(hex) {
+  const renderCurrent = hex.manager.renderCurrent;
+  let fps = 60;
+  let frames = 0;
+  let last = performance.now();
+  let lowered = false;
+  hex.manager.renderCurrent = function() {
+    const now = performance.now();
+    const dt = now - last;
+    last = now;
+    frames++;
+    if (dt > 0 && dt < 500) fps = fps * 0.9 + (1000 / dt) * 0.1;
+    // Require a sustained dip (~6-12s of frames) so a one-off hitch (tab
+    // switch, shader compile, AV scan) doesn't permanently lower the tier.
+    if (!lowered && !replayMode && frames > 360 && fps < 28 && hex.quality >= 3) {
+      lowered = true;
+      try {
+        const current = qualitySetting();
+        if (current > 1) localStorage.setItem(QUALITY_KEY, String(Math.max(1, current - 1)));
+      } catch (_) { /* storage blocked */ }
+      hex.softDowngrade();
+      const note = $("downgrade-note");
+      if (note) note.classList.remove("is-hidden");
+    }
+    return renderCurrent.call(this);
   };
 }
 
@@ -549,12 +682,14 @@ function bootGame() {
     ? "Orbit replay of your last run · ESC to pause · ends back at the finish card"
     : ({
         keyboard: "ARROWS steer · ↑ accelerate · Q / E air-brake",
-        mouse: "Move mouse to steer · click to accelerate · right-click brake",
-        touch: "Touch zones steer · tap TILT to use device motion",
-        tilt: "Tilt to steer · hold to accelerate"
+        mouse: "Move mouse to steer · click to accelerate · right-click brake",        touch: "Touch zones steer · tap TILT to use device motion",
+        tilt: "Tilt to steer · hold to accelerate",
+        gamepad: "Hold A to accelerate · left stick steer · triggers air-brake"
       }[effectiveMode] || "");
   const quality = qualitySetting();
-  const controlType = effectiveMode === "tilt" ? 4 : 0;
+  // All input comes from the shell now (keyboard/mouse/touch/gamepad/tilt);
+  // the engine's legacy controller types were pruned, so controlType is 0.
+  const controlType = 0;
   game = new bkcore.hexgl.HexGL({
     document,
     width: window.innerWidth,
@@ -571,6 +706,7 @@ function bootGame() {
     track: "Cityscape"
   });
   window.hexGL = game;
+  startFpsWatchdog(game);
   let assetsLoaded = false;
   game.load({
     onLoad() {
@@ -589,8 +725,10 @@ function bootGame() {
       }
       setupMobileControls(game, effectiveMode);
       if (effectiveMode === "mouse") setupMouseControls(game);
+      else if (effectiveMode === "gamepad") gamepadController = setupGamepadControls(game);
+      else if (effectiveMode === "tilt") setupTiltControls(game);
       attachGhost(game, bestRun);
-      attachLiveGhosts(game);
+      liveGhosts = attachLiveGhosts(game);
       multiplayer.startPresence(publishState);
     },
     onError(name) { console.error(`HexGL could not load ${name}.`); },
@@ -623,7 +761,9 @@ window.addEventListener("hexgl:lap", async (event) => {
   const detail = event.detail;
   try {
     const outcome = await database.submitLap({ time: detail.time, trace: detail.trace });
-    renderLeaderboard(outcome);
+    // Fast path (Q2): non-PB laps return runs:null, so the leaderboard is only
+    // re-rendered (and the network hit) when the lap actually improved the PB.
+    if (outcome.runs) renderLeaderboard(outcome);
     if (outcome.improvedGlobal) $("ghost-status").textContent = "NEW GLOBAL GHOST";
   } catch (error) {
     console.warn("Lap record failed", error);
@@ -649,17 +789,25 @@ $("control-toggle").addEventListener("click", async () => {
   setAutoLaunch();
   window.location.reload();
 });
-$("credits-button").addEventListener("click", () => $("credits-panel").classList.remove("is-hidden"));
-$("close-credits").addEventListener("click", () => $("credits-panel").classList.add("is-hidden"));
-$("credits-panel").addEventListener("click", (event) => { if (event.target.id === "credits-panel") event.currentTarget.classList.add("is-hidden"); });
+function restoreFocus() { lastFocused?.focus?.(); lastFocused = null; }
+$("credits-button").addEventListener("click", () => {
+  lastFocused = document.activeElement;
+  $("credits-panel").classList.remove("is-hidden");
+  $("close-credits").focus();
+});
+$("close-credits").addEventListener("click", () => { $("credits-panel").classList.add("is-hidden"); restoreFocus(); });
+$("credits-panel").addEventListener("click", (event) => { if (event.target.id === "credits-panel") { event.currentTarget.classList.add("is-hidden"); restoreFocus(); } });
 $("settings-button").addEventListener("click", openSettings);
 $("pause-settings-button").addEventListener("click", openSettings);
-$("settings-close").addEventListener("click", () => $("settings-panel").classList.add("is-hidden"));
-$("settings-panel").addEventListener("click", (event) => { if (event.target.id === "settings-panel") event.currentTarget.classList.add("is-hidden"); });
+const closeSettings = () => { $("settings-panel").classList.add("is-hidden"); restoreFocus(); };
+$("settings-close").addEventListener("click", closeSettings);
+$("settings-panel").addEventListener("click", (event) => { if (event.target.id === "settings-panel") closeSettings(); });
 document.querySelectorAll(".quality-option[data-quality]").forEach((option) => {
   option.addEventListener("click", () => setQuality(Number(option.dataset.quality)));
 });
 $("settings-sound").addEventListener("click", toggleMute);
+// The auto-downgrade note is clickable so a lowered tier can be restored.
+$("downgrade-note").addEventListener("click", openSettings);
 window.addEventListener("pagehide", () => multiplayer.stopPresence());
 
 if (isTouch) $("control-note").textContent = "Touch zones steer · tap TILT to use device motion";
@@ -700,18 +848,36 @@ window.addEventListener("resize", () => {
 
 // Pause menu. ESC is captured before the engine's ESC-to-reset handler.
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Tab") {
+    // A11y: keep focus trapped inside whichever modal is open.
+    const openPanel = ["settings-panel", "credits-panel", "pause-menu"]
+      .map((id) => $(id))
+      .find((panel) => panel && !panel.classList.contains("is-hidden"));
+    if (openPanel) {
+      const focusables = [...openPanel.querySelectorAll("button, [href], [tabindex]:not([tabindex='-1'])")]
+        .filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (focusables.length) {
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    }
+    return;
+  }
   if (event.key !== "Escape" && event.keyCode !== 27) return;
   // Modal panels close first, even before a game exists (settings is reachable from the launch screen).
   if (!$("settings-panel").classList.contains("is-hidden")) {
     event.preventDefault();
     event.stopPropagation();
-    $("settings-panel").classList.add("is-hidden");
+    closeSettings();
     return;
   }
   if (!$("credits-panel").classList.contains("is-hidden")) {
     event.preventDefault();
     event.stopPropagation();
     $("credits-panel").classList.add("is-hidden");
+    restoreFocus();
     return;
   }
   if (!game) return;

@@ -68,7 +68,7 @@ Map of every source file: **responsibility**, **imports**, **exports**, **functi
 - **Functions** — constructor, `load`, `updateState`, `get`, `loaded`, `loadTexture`, `loadTextureCube`, `loadGeometry`, `loadAnalyser`, `loadImage`, `loadSound`.
 - **Upgrade opportunities** — No retry/abort/error recovery (a failed texture hard-stops progress). `JSONLoader` parses huge text geometry JSON — switching to binary/typed-array geometry would cut load time. Geometry is cached per `HexGL` instance, not shared across restarts.
 
-### `bkcore/threejs/Preloader.js`
+### `bkcore/threejs/Preloader.js` — **deleted in the Aug 2026 prune** (unused; the shell has a DOM loading screen)
 - **Responsibility** — Original 2012 animated preloader overlay.
 - **Imports** — `THREE`, `bkcore.coffee/Utils`.
 - **Exports** — global `bkcore.threejs.Preloader`.
@@ -138,7 +138,7 @@ Map of every source file: **responsibility**, **imports**, **exports**, **functi
 - **Functions** — constructor, `tick`, `applyInterpolated`, `reset`, `export`, `import`.
 - **Upgrade opportunities** — Samples every ~16ms → ~180 samples/lap; traces can get large for the localStorage cap (50 runs). `applyInterpolated` end-guard was added recently — add a defensive empty-data guard too. Linear interpolation is fine; cubic would smooth corner traces.
 
-### `bkcore/hexgl/Ladder.js`
+### `bkcore/hexgl/Ladder.js` — **deleted in the Aug 2026 prune** (dead + broken namespace, never called by the shell)
 - **Responsibility** — Original leaderboard ladder loader/display.
 - **Imports** — `bkcore.Utils.request`, `bkcore.Timer`.
 - **Exports** — global `bkcore.hexgl.Ladder`.
@@ -177,25 +177,25 @@ Map of every source file: **responsibility**, **imports**, **exports**, **functi
 - **Functions** — constructor, `getPixel`, `getPixelBilinear`, `getPixelF`, `getPixelFBilinear`.
 - **Upgrade opportunity** — Loads via an `<img>`; using `createImageBitmap` + `OffscreenCanvas` would be faster and avoid CORS taint.
 
-### `bkcore.coffee/controllers/TouchController.js`
+### `bkcore.coffee/controllers/TouchController.js` — **deleted in the Aug 2026 prune**
 - **Responsibility** — Legacy touch joystick controller.
 - **Exports** — global `bkcore.TouchController`.
 - **Functions** — `isCompatible`, constructor, `touchStart`, `touchMove`, `touchEnd` (+ `Vec2`).
 - **Upgrade opportunity** — **Dead code**: the shell ships its own pointer-based touch controls in `game-app.js`. Remove (same for the `.coffee` sources).
 
-### `bkcore.coffee/controllers/OrientationController.js`
+### `bkcore.coffee/controllers/OrientationController.js` — **deleted in the Aug 2026 prune** (tilt now lives in the shell: `setupTiltControls` → `ShipControls.tiltAmount`)
 - **Responsibility** — Legacy device-orientation steering.
 - **Exports** — global `bkcore.OrientationController`.
 - **Functions** — `isCompatible`, constructor, `orientationChange`, `touchStart`, `touchEnd`.
 - **Upgrade opportunity** — Unused by the shell (tilt is gated in `game-app.js` without this class). Remove or modernize with `DeviceOrientationEvent.requestPermission`.
 
-### `bkcore.coffee/controllers/GamepadController.js`
+### `bkcore.coffee/controllers/GamepadController.js` — **deleted in the Aug 2026 prune** (replaced by the shell's modern Gamepad API PAD mode)
 - **Responsibility** — Legacy gamepad button mapping.
 - **Exports** — global `bkcore.GamepadController`.
 - **Functions** — `isCompatible`, constructor, `updateAvailable`.
 - **Upgrade opportunity** — Unused; the shell's control note advertises keyboard/mouse/touch/tilt only. Remove, or wire the Gamepad API as a 5th control mode (nice feature).
 
-### `bkcore.coffee/threejs/Particles.js` (+ `.coffee` sources)
+### `bkcore.coffee/threejs/Particles.js` (+ `.coffee` sources) — **deleted in the Aug 2026 prune** (superseded by `bkcore/threejs/Particles.js`)
 - **Responsibility** — Compiled CoffeeScript variant of the particle system (`bkcore.coffee/threejs/Particles`).
 - **Upgrade opportunity** — Superseded by `bkcore/threejs/Particles.js`, which is the one loaded in `index.html`. The `.coffee` sources are reference-only — safe to archive.
 
@@ -242,7 +242,7 @@ Map of every source file: **responsibility**, **imports**, **exports**, **functi
 - **Responsibility** — Sample replay trace (used by the engine's `RaceData.import`).
 - **Upgrade opportunity** — Not used by the shell's replay feature (that reads `race-Cityscape-replay` from localStorage) — keep as a fixture/test asset.
 
-### `hexgl-original/`
+### `hexgl-original/` — **moved out of the served root** (Aug 2026 prune) to `../ool_racing_by_ou812_reference_hexgl_original`
 - **Responsibility** — Pristine copy of the original HexGL release (reference for provenance: original `index.html`, `launch.coffee`, libs, replays).
 - **Upgrade opportunity** — Keep as reference; do not edit. It can be moved out of the served root to avoid double-shipping the whole original game.
 
@@ -254,4 +254,28 @@ Map of every source file: **responsibility**, **imports**, **exports**, **functi
 3. **Fast PB path** (Q2) — check local cache before hitting the network on lap submit.
 4. **Frame-rate-independent ghost lerp** (Q3) + unwrap render hooks (Q4).
 5. **De-dup scratch vectors in ShipControls** (Q5) for GC relief.
-6. **Prune dead code** — `Ladder.js`, `Preloader.js`, legacy controllers, Editor/, unused libs.
+6. **Prune dead code** — `Ladder.js`, `Preloader.js`, legacy controllers, Editor/, unused libs. ✅ done (Aug 2026).
+
+---
+
+## Upgrade status — what landed (August 2026)
+
+All of the file-level opportunities were addressed in one pass. **Landed:**
+
+| Area | Change |
+|---|---|
+| FPS auto-downgrade | `startFpsWatchdog` (game-app.js, EMA FPS over the render loop) → `HexGL.softDowngrade()` turns off bloom, shadow maps and ship particle trails **live**; persists `ool-quality` one tier down; a clickable "GRAPHICS AUTO-LOWERED · TAP TO RESTORE" chip opens settings. Requires a sustained dip (>360 frames, <28 FPS) so one-off hitches don't latch. |
+| devicePixelRatio (V1) | Renderer, composer render target and hexvignette uniforms render at DPR (capped 2); canvas CSS size stays at CSS px. Probe-verified: backing = 2× CSS under `--force-device-scale-factor=2`. |
+| Fast PB path (Q2) | `submitLap` checks the local cache first and returns `runs:null` (zero network) when a lap isn't a PB; the leaderboard only re-renders/refreshes on an actual PB. |
+| Ghost lerp (Q3) + hooks (Q4) | Live ghosts lerp by `1 − exp(−k·dt)` (frame-rate independent); `attachGhost` / `attachLiveGhosts` / gamepad wrappers restore the original `render` on destroy. |
+| Scratch vectors (Q5) | `ShipControls.collisionCheck` reuses `_checkPos`; the unused allocation in `boosterCheck` is gone; `projectLabel` uses a shared vector. |
+| Delta clamp | `RenderManager.renderCurrent` clamps frame delta to [0, 100] ms — no physics teleport on tab-switch spikes. |
+| Defensive guard | `RaceData.applyInterpolated` no-ops on empty/import-failed traces. |
+| Game feel (V4/V5) | Chase-camera FOV kick at speed + boost shake; hexvignette pulses with speed and goes red at low shield. |
+| PAD mode | Modern Gamepad API as a 5th control mode (KEYS / MOUSE / PAD on desktop), polled inside the render loop. |
+| Tilt → shell | `setupTiltControls` drives the new analog `ShipControls.tiltAmount` (same beta/45 curve + calibration); also fixes a latent bug where touch-button presses reset tilt steering. |
+| Audio | Dead HTML5 `<audio>` fallback removed; `play/stop/volume` guard missing sounds. |
+| A11y | Modal focus management (focus on open, Tab trap, restore on close); `prefers-reduced-motion` extended to all animations/transitions. |
+| Prune | Deleted `Ladder.js`, `Preloader.js`, `bkcore.coffee/controllers/*`, `bkcore.coffee/threejs/`, `Utils.request/scrollTo/updateClass`, unused libs (`Three.r53.js`, leap, DAT.GUI, `Stats.js`, `Detector.js`, `Editor/`), unused `css/` leftovers; `hexgl-original/` moved to `../ool_racing_by_ou812_reference_hexgl_original`. |
+
+**Deliberately not done** (need external assets, engine-rewrite scale, or are negative-value): MP3/opus audio fallbacks (would need generated assets), binary geometry (full engine change), `Utils.request→fetch` (the function was dead and is now deleted), native `Timer.pause` reuse (the shell's rewind approach is correct), sound pooling (WebAudio sources are single-shot by spec), `ImageData.createImageBitmap` (marginal win), IndexedDB trace storage (the localStorage cap is fine at this scale), README rewrite (docs).

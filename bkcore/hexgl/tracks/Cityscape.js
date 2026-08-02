@@ -117,7 +117,7 @@ bkcore.hexgl.tracks.Cityscape = {
 		// OR
 		// mobile + quality high
 		else // HIGH
-		{console.log('HIGH');
+		{
 			this.lib.load({
 				textures: {
 					'hex'								: "textures.full/hud/hex.jpg",
@@ -472,7 +472,8 @@ bkcore.hexgl.tracks.Cityscape = {
 			lerp: 0.5,
 			yoffset: 8.0,
 			zoffset: 10.0,
-			viewOffset: 10.0
+			viewOffset: 10.0,
+			boostRatio: function(){ return ctx.components.shipControls.getBoostRatio(); }
 		});
 
 		ctx.manager.add("game", scene, camera, function(delta, renderer)
@@ -497,16 +498,22 @@ bkcore.hexgl.tracks.Cityscape = {
 			this.objects.components.cameraChase.cameraCube.rotation.copy(c.rotation);*/
 
 			this.objects.composers.game.render(dt);
+			var sr = this.objects.components.shipControls.getShieldRatio();
 			if(this.objects.hud) this.objects.hud.update(
 				this.objects.components.shipControls.getRealSpeed(100),
 				this.objects.components.shipControls.getRealSpeedRatio(),
 				this.objects.components.shipControls.getShield(100),
-				this.objects.components.shipControls.getShieldRatio()
+				sr
 			);
-			if(this.objects.components.shipControls.getShieldRatio() < 0.2)
-				this.objects.extras.vignetteColor.setHex(0x992020);
-			else
-				this.objects.extras.vignetteColor.setHex(0x458ab1);
+			// V5: the vignette pulses subtly brighter with speed; turns red when
+			// the shield is critical. (getShieldRatio is computed once per frame.)
+			var baseHex = sr < 0.2 ? 0x992020 : 0x458ab1;
+			var pulse = 1 + this.objects.components.shipControls.getSpeedRatio() * 0.22;
+			this.objects.extras.vignetteColor.setRGB(
+				Math.min(1, ((baseHex >> 16) & 255) / 255 * pulse),
+				Math.min(1, ((baseHex >> 8) & 255) / 255 * pulse),
+				Math.min(1, (baseHex & 255) / 255 * pulse)
+			);
 		},
 		{
 			components: ctx.components,

@@ -25,18 +25,7 @@ bkcore.Audio.init = function(){
 
 bkcore.Audio.setMuted = function(muted){
 	if(bkcore.Audio._masterGain != null)
-	{
 		bkcore.Audio._masterGain.gain.value = muted ? 0 : 1;
-		return;
-	}
-	// Old-Safari HTML5 fallback path (no AudioContext)
-	for(var id in bkcore.Audio.sounds)
-	{
-		var s = bkcore.Audio.sounds[id];
-		if(s == null) continue;
-		if(s.gainNode != null) s.gainNode.gain.value = muted ? 0 : 1;
-		else if(s.muted != null) s.muted = muted;
-	}
 };
 
 bkcore.Audio.init();
@@ -78,17 +67,10 @@ bkcore.Audio.addSound = function(src, id, loop, callback, usePanner){
 		xhr.send(null);
 	}
 	else {
-		// Workaround for old Safari
-		audio.addEventListener('canplay', function(){
-			audio.pause();
-			audio.currentTime = 0;
-
-			callback();
-		}, false);
-
-		audio.autoplay = true;
-		audio.loop = loop;
-		audio.src = src;
+		// No WebAudio: store a silent stub so the loader still completes and
+		// play/stop/volume no-op cleanly (the HTML5 fallback was dead weight).
+		audio = { src: null, gainNode: null, bufferNode: null, loop: loop };
+		if(callback != null) callback();
 	}
 	
 	bkcore.Audio.sounds[id] = audio;
@@ -96,52 +78,44 @@ bkcore.Audio.addSound = function(src, id, loop, callback, usePanner){
 
 bkcore.Audio.play = function(id){
 	var ctx = bkcore.Audio._ctx;
+	var snd = bkcore.Audio.sounds[id];
+	if(snd == null) return;
 
 	if(ctx){
 		var sound = ctx.createBufferSource();
-		sound.connect(bkcore.Audio.sounds[id].gainNode);
+		sound.connect(snd.gainNode);
 		
-		sound.buffer = bkcore.Audio.sounds[id].src;
-		sound.loop = bkcore.Audio.sounds[id].loop;
+		sound.buffer = snd.src;
+		sound.loop = snd.loop;
 
-		bkcore.Audio.sounds[id].gainNode.gain.value = 1;
-		bkcore.Audio.sounds[id].bufferNode = sound;
+		snd.gainNode.gain.value = 1;
+		snd.bufferNode = sound;
 
 		sound.start ? sound.start(0) : sound.noteOn(0);
 	}
-	else {
-		if(bkcore.Audio.sounds[id].currentTime > 0){
-			bkcore.Audio.sounds[id].pause();
-			bkcore.Audio.sounds[id].currentTime = 0;
-		}
-
-		bkcore.Audio.sounds[id].play();
-	}
+	// else: no AudioContext — audio is a silent no-op.
 };
 
 bkcore.Audio.stop = function(id){
 	var ctx = bkcore.Audio._ctx;
+	var snd = bkcore.Audio.sounds[id];
+	if(snd == null) return;
 
 	if(ctx){
-		if(bkcore.Audio.sounds[id].bufferNode !== null){
-			var bufferNode = bkcore.Audio.sounds[id].bufferNode;
+		if(snd.bufferNode !== null){
+			var bufferNode = snd.bufferNode;
 			bufferNode.stop ? bufferNode.stop(ctx.currentTime) : bufferNode.noteOff(ctx.currentTime);
 		}
-	}
-	else {
-		bkcore.Audio.sounds[id].pause();
-		bkcore.Audio.sounds[id].currentTime = 0;
 	}
 };
 
 bkcore.Audio.volume = function(id, volume){
 	var ctx = bkcore.Audio._ctx;
+	var snd = bkcore.Audio.sounds[id];
+	if(snd == null) return;
 
 	if(ctx){
-		bkcore.Audio.sounds[id].gainNode.gain.value = volume;
-	}
-	else {
-		bkcore.Audio.sounds[id].volume = volume;
+		snd.gainNode.gain.value = volume;
 	}
 };
 

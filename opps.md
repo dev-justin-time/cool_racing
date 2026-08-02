@@ -111,3 +111,22 @@ F6 (Web Share), F5/F4 (rank + deltas), F7 (replay), F8 (wrong-way), M1–M4 (mul
 - `bkcore/threejs/RenderManager.js` — fine; `perfNow` fallback is good.
 - `websim.config.json` — fine; add a `run_count`/session table if you want per-session stats (M4).
 - `hexgl-original/` — pristine upstream copy; keep as reference, don't edit.
+
+---
+
+## Implemented (August 2026)
+
+The audit items have all landed:
+
+- **Q1 / V2** — quality settings screen (Low/Mid/High/Ultra, persisted) and ULTRA (quality 3) is the desktop default: bloom, 2048px shadows, particle trails render.
+- **FPS auto-downgrade** — `startFpsWatchdog` + `HexGL.softDowngrade()` disable bloom/shadows/trails live on sustained low FPS, persist a lower tier, and show a clickable "GRAPHICS AUTO-LOWERED" chip (restores via settings).
+- **V1** — devicePixelRatio rendering (capped 2): crisp on HiDPI, backing store 2× CSS (probe-verified).
+- **Q2** — fast PB path: `submitLap` checks the local cache first; non-PB laps return without any network; the leaderboard refreshes only on a real PB.
+- **Q3 / Q4** — frame-rate-independent live-ghost lerp; render-hook wrappers (ghost/live-ghost/gamepad) unwrap on destroy.
+- **Q5** — scratch vectors in the `ShipControls` hot loop (`collisionCheck`/`boosterCheck`) and `projectLabel`.
+- **V4** — chase-camera FOV kick at speed + boost shake.
+- **V5** — vignette speed pulse (red at critical shield).
+- **Dead-code prune** — `Ladder.js`, `Preloader.js`, legacy `bkcore.coffee/controllers/*`, `bkcore.coffee/threejs/`, unused vendored libs + CSS; `hexgl-original/` moved out of the served root.
+- **Extras** — PAD control mode (Gamepad API), shell-driven tilt (fixes a touch clobber bug), `RenderManager` delta clamp, `RaceData` empty-trace guard, Audio HTML5-fallback removal, modal focus traps, `prefers-reduced-motion` for all animations.
+
+> Most of Phase 1–3 roadmap items from the original audit (pause, replay, wrong-way, ghost delta, quality screen, FPS watchdog) are shipped; the remaining suggestions are the asset/external ones listed above in the summary.

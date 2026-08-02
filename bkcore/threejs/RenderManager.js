@@ -117,6 +117,11 @@ bkcore.threejs.RenderManager.prototype.renderCurrent = function()
 		var delta = now - this.time;
 		this.time = now;
 
+		// Clamp huge deltas (tab-switch, system stall) so the physics step
+		// never teleports the ship; a long pause is a long frame, not speed.
+		if(delta < 0) delta = 0;
+		if(delta > 100) delta = 100;
+
 		this.current.render.call(this.current, delta, this.renderer);
 	}
 	else console.warn('RenderManager: No current render defined.');

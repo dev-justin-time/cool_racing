@@ -103,6 +103,19 @@ bkcore.hexgl.ShipEffects = function(opts)
 	}
 }
 
+// Live teardown for the FPS auto-downgrade: removes every particle system
+// from its parent (ship mesh or scene) and stops updating them.
+bkcore.hexgl.ShipEffects.prototype.destroy = function()
+{
+	if(!this.useParticles || !this.particles) return;
+	this.useParticles = false;
+	for(var key in this.particles)
+	{
+		var system = this.particles[key].system;
+		if(system != null && system.parent != null) system.parent.remove(system);
+	}
+};
+
 bkcore.hexgl.ShipEffects.prototype.update = function(dt)
 {
 	var boostRatio, opacity, scale, intensity, random;

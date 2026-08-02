@@ -157,10 +157,18 @@ async function loadPersonalRecord() {
 async function submitLap({ time, trace }) {
   const bestLapMs = Math.round(Number(time));
   const clean = cleanTrace(trace);
-  let runs = await loadLeaderboard();
-  const current = await loadPersonalRecord();
+  const localRuns = readLocal();
+  const cached = localRuns.find((run) => run.id === myRecordId());
+  // Fast path (Q2): when the lap doesn't beat the cached personal best there is
+  // nothing to save or upload — return without touching the network at all.
+  if (cached && bestLapMs >= Number(cached.best_lap_ms)) {
+    return { saved: false, improvedGlobal: false, run: cached, personal: cached, runs: null, remote };
+  }
+  // Double-check against the remote record only when the local cache thinks it
+  // is a PB (the local cache is the single source of truth while offline).
+  const current = remote && room ? await loadPersonalRecord() : cached;
   if (current && bestLapMs >= Number(current.best_lap_ms)) {
-    return { saved: false, improvedGlobal: false, run: current, personal: current, runs, remote };
+    return { saved: false, improvedGlobal: false, run: current, personal: current, runs: null, remote };
   }
 
   const record = {
@@ -190,9 +198,10 @@ async function submitLap({ time, trace }) {
     }
   }
 
-  const localRuns = sortRuns([record, ...readLocal().filter((run) => run.id !== record.id)]);
-  writeLocal(localRuns);
-  runs = await loadLeaderboard();
+  const newLocal = sortRuns([record, ...localRuns.filter((run) => run.id !== record.id)]);
+  writeLocal(newLocal);
+  // Refresh the board only when the lap actually improved the PB (once per race).
+  const runs = remote && room ? await loadLeaderboard() : newLocal;
   const globalBest = runs[0];
   return {
     saved: true,

@@ -45,6 +45,13 @@ bkcore.hexgl.RaceData.prototype.tick = function(time)
 
 bkcore.hexgl.RaceData.prototype.applyInterpolated = function(time)
 {
+	// Defensive guard: never run on an empty/import-failed trace.
+	if(this.data.length == 0 || this.last < 0 || this.seek > this.last || this.data[this.seek] == null)
+	{
+		console.warn('Bad/empty race data in applyInterpolated.');
+		return;
+	}
+
 	while(this.seek < this.last && this.data[this.seek+1][0] < time)
 		++this.seek;
 
