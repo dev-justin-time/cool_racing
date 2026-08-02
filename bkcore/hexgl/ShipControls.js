@@ -63,6 +63,10 @@ bkcore.hexgl.ShipControls = function(ctx)
 
 	this.collisionMap = null;
 	this.collisionPixelRatio = 1.0;
+	this.mapWorldWidth = 6000.0; // world units the analyser maps span
+	this._collisionScale = 1.0; // mapWidth/2048, applied to pixel-space probes
+	this._collisionScaled = false;
+	this._heightScaled = false;
 	this.collisionDetection = false;
 	this.collisionPreviousPosition = new THREE.Vector3();
 
@@ -467,6 +471,13 @@ bkcore.hexgl.ShipControls.prototype.collisionCheck = function(dt)
 	if(!this.collisionDetection || !this.collisionMap || !this.collisionMap.loaded)
 		return false;
 
+	if(this.collisionMap.loaded && !this._collisionScaled)
+	{
+		this.collisionPixelRatio = this.collisionMap.pixels.width / this.mapWorldWidth;
+		this._collisionScale = this.collisionMap.pixels.width / 2048.0;
+		this._collisionScaled = true;
+	}
+
 	if(this.shieldDelay > 0)
 		this.shieldDelay -= dt;
 
@@ -499,8 +510,8 @@ bkcore.hexgl.ShipControls.prototype.collisionCheck = function(dt)
 		this.repulsionVLeft.multiplyScalar(this.repulsionVScale);
 		this.repulsionVRight.multiplyScalar(this.repulsionVScale);
 
-		var lPos = this.repulsionVLeft.addSelf(pos);
-		var rPos = this.repulsionVRight.addSelf(pos);
+		var lPos = this.repulsionVLeft.multiplyScalar(this._collisionScale).addSelf(pos);
+		var rPos = this.repulsionVRight.multiplyScalar(this._collisionScale).addSelf(pos);
 		var lCol = this.collisionMap.getPixel(Math.round(lPos.x), Math.round(lPos.z)).r;
 		var rCol = this.collisionMap.getPixel(Math.round(rPos.x), Math.round(rPos.z)).r;
 
@@ -531,7 +542,7 @@ bkcore.hexgl.ShipControls.prototype.collisionCheck = function(dt)
 		// DIRTY GAMEOVER
 		if(rCol < 128 && lCol < 128)
 		{
-			var fCol = this.collisionMap.getPixel(Math.round(pos.x+2), Math.round(pos.z+2)).r;
+			var fCol = this.collisionMap.getPixel(Math.round(pos.x + 2 * this._collisionScale), Math.round(pos.z + 2 * this._collisionScale)).r;
 			if(fCol < 128)
 			{
 				console.log('GAMEOVER');
@@ -555,6 +566,12 @@ bkcore.hexgl.ShipControls.prototype.heightCheck = function(dt)
 {
 	if(!this.heightMap || !this.heightMap.loaded)
 		return false;
+
+	if(this.heightMap.loaded && !this._heightScaled)
+	{
+		this.heightPixelRatio = this.heightMap.pixels.width / this.mapWorldWidth;
+		this._heightScaled = true;
+	}
 
 	var x = this.heightMap.pixels.width/2 + this.dummy.position.x * this.heightPixelRatio;
 	var z = this.heightMap.pixels.height/2 + this.dummy.position.z * this.heightPixelRatio;

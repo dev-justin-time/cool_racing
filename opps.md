@@ -130,3 +130,6 @@ The audit items have all landed:
 - **Extras** — PAD control mode (Gamepad API), shell-driven tilt (fixes a touch clobber bug), `RenderManager` delta clamp, `RaceData` empty-trace guard, Audio HTML5-fallback removal, modal focus traps, `prefers-reduced-motion` for all animations.
 
 > Most of Phase 1–3 roadmap items from the original audit (pause, replay, wrong-way, ghost delta, quality screen, FPS watchdog) are shipped; the remaining suggestions are the asset/external ones listed above in the summary.
+
+- **LOW texture pack** — new `textures.low/` generated from `textures.full/` (256px visuals, 512px analysers, HUD kept sharp). LOW quality (0) now loads it, skipping the 2048px collision/height maps entirely (16MB → 1MB decoded each). Collision/height sampling became resolution-independent (`ShipControls` lazy ratio sync + scaled probes, `Gameplay.checkPoint` ratio sync) — verified identical world mapping at 2048 vs 512, checkpoint IDs in the collision blue channel preserved.
+- **Per-lap delta readout** — new `#lap-delta` chip (below the ghost delta): live lap clock plus `+0.42s`/`–0.12s` vs your session best, seeded from the personal best at boot and tightened live as you beat it; `NEW SESSION BEST` flash on improvement. Boot-scoped render hook (like the ghost), survives pause-restarts, hidden pre-race/on finish, `prefers-reduced-motion` safe.

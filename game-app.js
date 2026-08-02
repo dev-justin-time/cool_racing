@@ -20,6 +20,11 @@ let replayMode = false;
 let lastFocused = null;
 let liveGhosts = null;
 let gamepadController = null;
+let lapDeltaController = null;
+// Best completed lap this page session; seeded from your personal best so the
+// readout is meaningful from lap 1, then tightens as you beat it live.
+let sessionBestLap = null;
+let personalBestLap = null;
 const MUTE_KEY = "ool-muted";
 
 function formatTime(value) {
@@ -141,13 +146,14 @@ function renderLeaderboardUser(run) {
 
 function renderLeaderboard({ runs = [], personal = null, remote = false } = {}) {
   bestRun = runs[0] || null;
+  const personalBest = personal || runs.find((run) => database.isMine(run));
+  personalBestLap = personalBest?.best_lap_ms ?? null;
   $("best-time").textContent = bestRun ? `BEST ${formatTime(bestRun.best_lap_ms)}` : "BEST —:—.———";
   $("connection-status").textContent = remote ? "GLOBAL LINK" : "LOCAL RUN";
   $("ghost-status").textContent = bestRun ? "GHOST READY" : "NO GHOST";
   $("ghost-name").textContent = bestRun ? `${bestRun.username || "Rival"} · ${formatTime(bestRun.best_lap_ms)}` : "No ghost on the grid";
   $("connection-status").classList.remove("is-hidden");
   $("ghost-status").classList.remove("is-hidden");
-  const personalBest = personal || runs.find((run) => database.isMine(run));
   $("personal-best").textContent = personalBest ? `PB ${formatTime(personalBest.best_lap_ms)}` : "PB —:—.———";
   const list = runs.slice(0, window.matchMedia("(max-width: 760px)").matches ? 3 : 5);
   $("leaderboard-list").innerHTML = list.length ? list.map((run, index) => `
@@ -498,6 +504,78 @@ function attachGhost(hex, record) {
   };
 }
 
+// Per-lap delta readout (V3-style): a live clock during each lap showing the
+// current lap time and how it compares to the session best lap. Works without
+// a ghost, survives restarts, and flashes on a new session best. Updated inside
+// the render loop via the same wrapper-unwrap pattern as the ghost controller.
+function startLapDelta(hex) {
+  const renderState = hex.manager?.get("game");
+  const el = $("lap-delta");
+  if (!renderState || !el) return null;
+  let flashUntil = 0; // Date.now() timestamp while a NEW SESSION BEST flash shows
+  let lastShownLap = 0;
+
+  const render = () => {
+    const gameplay = hex.gameplay;
+    const lapTime = gameplay?.currentLapTime || 0;
+    const lap = gameplay?.lap || 1;
+    if (!gameplay || gameplay.step < 4 || replayMode || lapTime < 0) {
+      el.classList.add("is-hidden");
+      return;
+    }
+    // Hold a NEW SESSION BEST flash for its duration before resuming the delta
+    // (the hexgl:lap event fires synchronously inside gameplay.update, so the
+    // render hook runs in the same frame and would otherwise clobber it).
+    if (flashUntil) {
+      if (Date.now() < flashUntil) {
+        el.classList.remove("is-hidden");
+        return; // flash text/class already set by flashNewBest
+      }
+      flashUntil = 0;
+      el.classList.remove("new-best");
+    }
+    // New lap started (Gameplay resets currentLapTime to 0 on crossing).
+    if (lap !== lastShownLap) {
+      lastShownLap = lap;
+      el.classList.remove("ahead", "behind", "new-best");
+    }
+    el.classList.remove("is-hidden");
+    if (sessionBestLap == null) {
+      // No baseline yet: show the live lap clock (countdown-style polish).
+      el.textContent = `LAP ${lap} · ${formatTime(lapTime)}`;
+      return;
+    }
+    const deltaMs = lapTime - sessionBestLap;
+    el.textContent = `LAP ${lap} · ${formatTime(lapTime)} · ${formatDelta(deltaMs)}`;
+    el.classList.toggle("ahead", deltaMs < 0);
+    el.classList.toggle("behind", deltaMs >= 0);
+  };
+
+  const originalRender = renderState.render;
+  const wrapped = function (delta, renderer) {
+    render();
+    return originalRender.call(this, delta, renderer);
+  };
+  renderState.render = wrapped;
+
+  return {
+    // Called from the hexgl:lap handler when a lap beats the session best.
+    flashNewBest(time) {
+      el.textContent = `NEW SESSION BEST · ${formatTime(time)}`;
+      el.classList.remove("ahead", "behind");
+      el.classList.add("new-best");
+      el.classList.remove("is-hidden");
+      flashUntil = Date.now() + 1600;
+    },
+    destroy() {
+      flashUntil = 0;
+      // Q4: unwrap the render hook so re-attaching never chains wrappers.
+      if (renderState.render === wrapped) renderState.render = originalRender;
+      el.classList.add("is-hidden");
+    }
+  };
+}
+
 function attachLiveGhosts(hex) {
   const renderState = hex.manager.get("game");
   const projector = THREE.Projector ? new THREE.Projector() : null;
@@ -588,9 +666,13 @@ async function onFinish({ time, lapTimes, result }) {
   paused = false;
   $("pause-menu").classList.add("is-hidden");
   $("ghost-delta").classList.add("is-hidden");
+  $("lap-delta").classList.add("is-hidden");
   $("wrong-way").classList.add("is-hidden");
   $("replay-badge").classList.add("is-hidden");
   multiplayer.stopPresence();
+  // NB: lapDeltaController is intentionally NOT destroyed here — it is
+  // boot-scoped like the ghost wrapper, self-hides on step < 4, and must
+  // survive for pause-restart (game.reset) races after a finish.
   if (liveGhosts?.destroy) liveGhosts.destroy();
   liveGhosts = null;
   if (gamepadController?.destroy) gamepadController.destroy();
@@ -729,6 +811,10 @@ function bootGame() {
       else if (effectiveMode === "tilt") setupTiltControls(game);
       attachGhost(game, bestRun);
       liveGhosts = attachLiveGhosts(game);
+      // Seed the per-lap delta baseline from the personal best so lap 1 already
+      // has a target; the hexgl:lap handler tightens it as you beat it.
+      sessionBestLap = personalBestLap;
+      lapDeltaController = startLapDelta(game);
       multiplayer.startPresence(publishState);
     },
     onError(name) { console.error(`HexGL could not load ${name}.`); },
@@ -759,6 +845,12 @@ window.addEventListener("hexgl:wrongway", (event) => {
 });
 window.addEventListener("hexgl:lap", async (event) => {
   const detail = event.detail;
+  // Track the session best lap live (the per-lap delta baseline).
+  if (detail.time > 0) {
+    const improved = sessionBestLap == null || detail.time < sessionBestLap;
+    if (improved) sessionBestLap = detail.time;
+    if (improved && lapDeltaController?.flashNewBest) lapDeltaController.flashNewBest(detail.time);
+  }
   try {
     const outcome = await database.submitLap({ time: detail.time, trace: detail.trace });
     // Fast path (Q2): non-PB laps return runs:null, so the leaderboard is only

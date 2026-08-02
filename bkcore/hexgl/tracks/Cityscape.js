@@ -41,6 +41,12 @@ bkcore.hexgl.tracks.Cityscape = {
 	{
 		this.lib = new bkcore.threejs.Loader(opts);
 
+	// LOW quality (0) uses the ultra-light textures.low pack:
+	// 256px visuals + 512px analysers (no 2048px maps on low-end).
+	// MID (1) uses textures/, HIGH/ULTRA (2/3) use textures.full/.
+	var tex = quality === 0 ? "textures.low" : "textures";
+
+
 		// desktop + quality low
 		// OR
 		// mobile + quality low or mid
@@ -48,21 +54,21 @@ bkcore.hexgl.tracks.Cityscape = {
 		{
 			this.lib.load({
 				textures: {
-					'hex'								: "textures/hud/hex.jpg",
-					'spark'								: "textures/particles/spark.png",
-					'cloud'								: "textures/particles/cloud.png",
-					'ship.feisar.diffuse'				: "textures/ships/feisar/diffuse.jpg",
-					'booster.diffuse'					: "textures/ships/feisar/booster/booster.png",
-					'booster.sprite'					: "textures/ships/feisar/booster/boostersprite.jpg",
-					'track.cityscape.diffuse'			: "textures/tracks/cityscape/diffuse.jpg",
-					'track.cityscape.scrapers1.diffuse'	: "textures/tracks/cityscape/scrapers1/diffuse.jpg",
-					'track.cityscape.scrapers2.diffuse'	: "textures/tracks/cityscape/scrapers2/diffuse.jpg",
-					'track.cityscape.start.diffuse'		: "textures/tracks/cityscape/start/diffuse.jpg",
-					'track.cityscape.start.banner'		: "textures/tracks/cityscape/start/start.jpg",
-					'bonus.base.diffuse'				: "textures/bonus/base/diffuse.jpg"
+					'hex'								: tex + "/hud/hex.jpg",
+					'spark'								: tex + "/particles/spark.png",
+					'cloud'								: tex + "/particles/cloud.png",
+					'ship.feisar.diffuse'				: tex + "/ships/feisar/diffuse.jpg",
+					'booster.diffuse'					: tex + "/ships/feisar/booster/booster.png",
+					'booster.sprite'					: tex + "/ships/feisar/booster/boostersprite.jpg",
+					'track.cityscape.diffuse'			: tex + "/tracks/cityscape/diffuse.jpg",
+					'track.cityscape.scrapers1.diffuse'	: tex + "/tracks/cityscape/scrapers1/diffuse.jpg",
+					'track.cityscape.scrapers2.diffuse'	: tex + "/tracks/cityscape/scrapers2/diffuse.jpg",
+					'track.cityscape.start.diffuse'		: tex + "/tracks/cityscape/start/diffuse.jpg",
+					'track.cityscape.start.banner'		: tex + "/tracks/cityscape/start/start.jpg",
+					'bonus.base.diffuse'				: tex + "/bonus/base/diffuse.jpg"
 				},
 				texturesCube: {
-					'skybox.dawnclouds'					: "textures/skybox/dawnclouds/%1.jpg"
+					'skybox.dawnclouds'					: tex + "/skybox/dawnclouds/%1.jpg"
 				},
 				geometries: {
 					'bonus.base'						: "geometries/bonus/base/base.js",
@@ -76,13 +82,13 @@ bkcore.hexgl.tracks.Cityscape = {
 					'track.cityscape.bonus.speed'		: "geometries/tracks/cityscape/bonus/speed.js"
 				},
 				analysers: {
-					'track.cityscape.collision'			: "textures/tracks/cityscape/collision.png",
-					'track.cityscape.height'			: "textures/tracks/cityscape/height.png"
+					'track.cityscape.collision'			: tex + "/tracks/cityscape/collision.png",
+					'track.cityscape.height'			: tex + "/tracks/cityscape/height.png"
 				},
 				images: {
-					'hud.bg'							: "textures/hud/hud-bg.png",
-					'hud.speed'							: "textures/hud/hud-fg-speed.png",
-					'hud.shield'						: "textures/hud/hud-fg-shield.png"
+					'hud.bg'							: tex + "/hud/hud-bg.png",
+					'hud.speed'							: tex + "/hud/hud-fg-speed.png",
+					'hud.shield'						: tex + "/hud/hud-fg-shield.png"
 				},
 				sounds: {
 					bg: {
@@ -424,10 +430,10 @@ bkcore.hexgl.tracks.Cityscape = {
 		// SHIP CONTROLS
 		var shipControls = new bkcore.hexgl.ShipControls(ctx);
 		shipControls.collisionMap = this.lib.get("analysers", "track.cityscape.collision");
-		shipControls.collisionPixelRatio = 2048.0 / 6000.0;
+		// Pixel ratios are synced lazily in ShipControls once the analysers
+		// load (pixels.width / mapWorldWidth) so they work at any map size.
 		shipControls.collisionDetection = true;
 		shipControls.heightMap = this.lib.get("analysers", "track.cityscape.height");;
-		shipControls.heightPixelRatio = 2048.0 / 6000.0;
 		shipControls.heightBias = 4.0;
 		shipControls.heightScale = 10.0;
 		shipControls.control(ship);

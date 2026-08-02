@@ -31,6 +31,7 @@ bkcore.hexgl.Gameplay = function(opts)
 	this.track = opts.track;
 	this.analyser = opts.analyser;
 	this.pixelRatio = opts.pixelRatio;
+	this._ratioSynced = false;
 
 	this.previousCheckPoint = -1;
 	this.wrongWay = false;
@@ -274,6 +275,12 @@ bkcore.hexgl.Gameplay.prototype.update = function()
 
 bkcore.hexgl.Gameplay.prototype.checkPoint = function()
 {
+	// Analysers load async; sync the ratio to the real map width once.
+	if(this.analyser && this.analyser.loaded && this.analyser.pixels && !this._ratioSynced)
+	{
+		this.pixelRatio = this.analyser.pixels.width / 6000.0;
+		this._ratioSynced = true;
+	}
 	var current = this.shipControls.dummy.position;
 	var from = this.hasPreviousPosition ? this.previousPosition : current;
 	var dx = current.x - from.x;

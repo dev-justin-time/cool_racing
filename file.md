@@ -16,10 +16,10 @@ Map of every source file: **responsibility**, **imports**, **exports**, **functi
 - **Upgrade opportunities** — 25 `<script>` tags could be bundled (fewer requests, but the vendored Three.js must stay classic-global). `favicon.png` is referenced — confirm it exists. Accessibility pass: modal focus-trapping (pause/settings) is still manual.
 
 ### `game-app.js`
-- **Responsibility** — The whole modern shell: launch/boot gate, mode (timeattack/replay), quality + control + mute settings (persisted), pause menu + auto-pause, ghost (best-run) + live multiplayer ghosts, ghost delta readout, WRONG WAY banner, replay wiring, resize handling, finish flow, leaderboard rendering.
+- **Responsibility** — The whole modern shell: launch/boot gate, mode (timeattack/replay), quality + control + mute settings (persisted), pause menu + auto-pause, ghost (best-run) + live multiplayer ghosts, ghost delta + per-lap session-best delta readouts, WRONG WAY banner, replay wiring, resize handling, finish flow, leaderboard rendering.
 - **Imports** — `{ database, multiplayer } from "./websim-layer.js"`; `THREE`, `bkcore` globals.
 - **Exports** — none (side-effect module). Publishes `window.hexGL`.
-- **Functions** — `formatTime`, `escapeHtml`, `formatDelta`, `applyMuted`, `qualitySetting`, `openSettings`, `setQuality`, `toggleMute`, `canPause`, `setPaused`, `renderLeaderboardUser`, `renderLeaderboard`, `controlMode`, `labelForMode`, `setupMouseControls`, `requestTiltPermission`, `setupMobileControls`, `projectLabel`, `attachGhost`, `attachLiveGhosts`, `showFinish`, `onFinish`, `publishState`, `bootGame`, `setAutoLaunch`, `setReplayLaunch`; overrides `bkcore.hexgl.HexGL.prototype.displayScore`.
+- **Functions** — `formatTime`, `escapeHtml`, `formatDelta`, `applyMuted`, `qualitySetting`, `openSettings`, `setQuality`, `toggleMute`, `canPause`, `setPaused`, `renderLeaderboardUser`, `renderLeaderboard`, `controlMode`, `labelForMode`, `setupMouseControls`, `requestTiltPermission`, `setupMobileControls`, `projectLabel`, `attachGhost`, `attachLiveGhosts`, `startLapDelta` (per-lap delta chip, boot-scoped render hook + `flashNewBest`), `showFinish`, `onFinish`, `publishState`, `bootGame`, `setAutoLaunch`, `setReplayLaunch`; overrides `bkcore.hexgl.HexGL.prototype.displayScore`.
 - **Upgrade opportunities** — **FPS auto-downgrade** (pending from the audit): monitor `lowFPS` and soft-disable bloom/shadows/particles mid-race. **Render at devicePixelRatio** (cap ~1.5–2) for HiDPI sharpness. `attachGhost`/`attachLiveGhosts` wrap `renderState.render` but never restore it on destroy (Q4). Ghost lerp is per-frame `* .22`, not frame-rate independent (Q3). Per-frame `new THREE.Vector3` in `projectLabel`. Quality is baked at engine init so `setQuality` reloads — a future "apply without reload" would need engine-side runtime toggles.
 
 ### `styles.css`
@@ -102,13 +102,15 @@ Map of every source file: **responsibility**, **imports**, **exports**, **functi
 - **Exports** — global `bkcore.hexgl.Gameplay`.
 - **Functions** — constructor (`this.modes.timeattack`, `this.modes.replay`), `simu`, `start`, `end`, `update`, `checkPoint`, `setWrongWay` (added), `recordLapSample`.
 - **Upgrade opportunities** — Wrong-way is order-based: a forward cut that skips a checkpoint is mathematically identical to reversing — accepted heuristic, could add a heading check (ship facing vs checkpoint direction). Replay `seek` scans linearly per frame — binary search on the trace for long replays. The `end(REPLAY)` fix (`self.results.REPLAY`) landed recently; keep `results` vs `result` naming distinct — it bit us once.
+- **Landed** — `checkPoint` now syncs `pixelRatio` lazily from the analyser's actual width (`_ratioSynced`), making checkpoint stepping resolution-independent for the 512px LOW analysers.
 
 ### `bkcore/hexgl/ShipControls.js`
 - **Responsibility** — Ship physics: thrust/steer/air-brake, boost, collision + height sampling against pixel analysers, falls, teleport, reset; exposes all HUD/presence getters.
 - **Imports** — `THREE`, `bkcore.ImageData`, `bkcore.hexgl.HUD` info hooks.
 - **Exports** — global `bkcore.hexgl.ShipControls`.
 - **Functions** — constructor (keyboard hooks), `control`, `reset`, `terminate`, `destroy`, `fall`, `update`, `teleport`, `boosterCheck`, `collisionCheck`, `heightCheck`, `getRealSpeed`, `getRealSpeedRatio`, `getSpeedRatio`, `getBoostRatio`, `getShieldRatio`, `getShield`, `getPosition`, `getQuaternion`.
-- **Upgrade opportunities** — **Per-frame `new THREE.Vector3` allocations in the hot loop** (Q5): `collisionCheck`/`boosterCheck` create vectors every frame — reuse scratch vectors. Collision samples the 2048px map each frame; a coarse+fine two-pass check would cut cost at low quality. Steering is digital (left/right booleans) — an analog curve would improve game feel.
+- **Upgrade opportunities** — Collision samples the analyser each frame; a coarse+fine two-pass check would cut cost at low quality. Steering is digital (left/right booleans) — an analog curve would improve game feel.
+- **Landed** — scratch vectors (Q5); `collisionCheck`/`heightCheck` sync `collisionPixelRatio`/`heightPixelRatio` lazily from the real map width (`mapWorldWidth`), and the `pos.x+2` gameover probe + repulsion side probes scale by `_collisionScale` — collision/height behave identically at 2048px and 512px (LOW pack).
 
 ### `bkcore/hexgl/ShipEffects.js`
 - **Responsibility** — Ship visual effects: booster flame sprite scaling, exhaust particle trails (quality 3 only), boost light pulsing.
@@ -150,7 +152,8 @@ Map of every source file: **responsibility**, **imports**, **exports**, **functi
 - **Imports** — `THREE`, `bkcore.threejs.Loader`, `bkcore.Utils`, `bkcore.hexgl.*`.
 - **Exports** — global `bkcore.hexgl.tracks.Cityscape` (object).
 - **Functions** — `load`, `buildMaterials`, `buildScenes` (with the `game` render-loop closure).
-- **Upgrade opportunities** — Stray `console.log('HIGH')` on the high-quality path. The LOW/HIGH asset manifests duplicate ~40 lines — extract a manifest. Both 2048px analysers load at every quality; LOW could sample a 512px map. The render closure re-checks `getShieldRatio()` twice per frame.
+- **Upgrade opportunities** — The LOW/HIGH asset manifests duplicate ~40 lines — extract a manifest. The render closure re-checks `getShieldRatio()` twice per frame.
+- **Landed** — `console.log('HIGH')` removed; shield-ratio deduped; vignette speed pulse; and the LOW tier now loads `textures.low/` (a `tex` prefix picks `textures.low` / `textures` / `textures.full` by quality) so the 2048px analysers never load on low-end (512px maps with per-channel LANCZOS, checkpoint blue-channel preserved).
 
 ---
 
