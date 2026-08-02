@@ -21,6 +21,8 @@ let lastFocused = null;
 let liveGhosts = null;
 let gamepadController = null;
 let lapDeltaController = null;
+let demoMode = false;
+let demoController = null;
 // Best completed lap this page session; seeded from your personal best so the
 // readout is meaningful from lap 1, then tightens as you beat it live.
 let sessionBestLap = null;
@@ -576,6 +578,69 @@ function startLapDelta(hex) {
   };
 }
 
+// Demo / attract mode: extract the racing line, put the hero ship on autopilot,
+// and spawn the visible AI racers. The autopilot drives the real ShipControls
+// key state each frame (before the engine's own update), so physics, height and
+// boosters all behave exactly like a player's run.
+function startDemo(hex) {
+  const line = bkcore.hexgl.AIDemo.generateRacingLine(hex.track.analyser, hex.track.spawn);
+  if (!line) {
+    console.warn("Demo: racing line not ready — falling back to a normal race.");
+    demoMode = false;
+    $("race-screen").classList.remove("is-demo");
+    return;
+  }
+  const autopilot = new bkcore.hexgl.AIDemo.Autopilot(hex.components.shipControls, line);
+  const racers = bkcore.hexgl.AIDemo.createRacers(hex, line);
+  const renderState = hex.manager.get("game");
+  const originalRender = renderState.render;
+  const wrapped = function (delta, renderer) {
+    autopilot.update(delta);
+    for (let i = 0; i < racers.length; i++) racers[i].update(delta);
+    return originalRender.call(this, delta, renderer);
+  };
+  renderState.render = wrapped;
+  demoController = {
+    autopilot,
+    racers,
+    destroy() {
+      // Q4: unwrap the render hook so teardown never leaves a stale wrapper.
+      if (renderState.render === wrapped) renderState.render = originalRender;
+      for (let i = 0; i < racers.length; i++) racers[i].destroy();
+    }
+  };
+  $("demo-mode-pill").textContent = "AUTOPILOT";
+  $("demo-screen").classList.remove("is-hidden");
+  $("demo-controls").classList.remove("is-hidden");
+}
+
+// Hands the wheel to the player: the race becomes a normal time attack (laps
+// submit, finish card shows) while the AI racers keep driving on the grid.
+function takeControl() {
+  if (!demoMode || !game) return;
+  demoMode = false;
+  game.mode = "timeattack";
+  if (game.gameplay) {
+    game.gameplay.mode = "timeattack";
+    game.gameplay.maxLaps = 3;
+  }
+  if (demoController?.autopilot) demoController.autopilot.disengage();
+  $("race-screen").classList.remove("is-demo");
+  $("demo-controls").classList.add("is-hidden");
+  $("demo-mode-pill").textContent = "MANUAL";
+  window.setTimeout(() => $("demo-screen").classList.add("is-hidden"), 2400);
+  // Bring the normal race extras online: per-lap delta + best ghost.
+  sessionBestLap = personalBestLap;
+  lapDeltaController = startLapDelta(game);
+  if (bestRun && !ghostController) attachGhost(game, bestRun);
+}
+
+function exitDemo() {
+  if (demoController?.destroy) demoController.destroy();
+  demoController = null;
+  window.location.reload();
+}
+
 function attachLiveGhosts(hex) {
   const renderState = hex.manager.get("game");
   const projector = THREE.Projector ? new THREE.Projector() : null;
@@ -662,6 +727,8 @@ function showFinish({ time, lapTimes = [], result }) {
 
 async function onFinish({ time, lapTimes, result }) {
   if (runSubmitted) return;
+  // Defensive: the demo attract loop ends via HexGL's own reset, never here.
+  if (demoMode) return;
   runSubmitted = true;
   paused = false;
   $("pause-menu").classList.add("is-hidden");
@@ -730,9 +797,14 @@ function startFpsWatchdog(hex) {
   };
 }
 
-function bootGame() {
+function bootGame(opts) {
+  const demo = Boolean(opts && opts.demo);
+  demoMode = demo;
   $("launch-screen").classList.add("is-hidden");
   $("race-screen").classList.remove("is-hidden");
+  $("race-screen").classList.toggle("is-demo", demo);
+  $("demo-screen").classList.add("is-hidden");
+  $("demo-controls").classList.remove("is-hidden");
   runSubmitted = false;
   paused = false;
   $("pause-menu").classList.add("is-hidden");
@@ -783,8 +855,10 @@ function bootGame() {
     difficulty: 0,
     hud: true,
     controlType,
-    godmode: false,
-    mode: replayMode ? "replay" : "timeattack",
+    // Demo mode runs godmode so an autopilot wall-grind can never end the
+    // showcase — the attract loop should only reset via a real crash-free lap.
+    godmode: demo,
+    mode: demo ? "demo" : (replayMode ? "replay" : "timeattack"),
     track: "Cityscape"
   });
   window.hexGL = game;
@@ -809,6 +883,13 @@ function bootGame() {
       if (effectiveMode === "mouse") setupMouseControls(game);
       else if (effectiveMode === "gamepad") gamepadController = setupGamepadControls(game);
       else if (effectiveMode === "tilt") setupTiltControls(game);
+      // Demo mode: input is bound (so "Take control" works instantly on any
+      // device) but the autopilot owns the keys until the player intervenes.
+      // No best-ghost, lap-delta, or leaderboard submissions in the attract loop.
+      if (demoMode) {
+        startDemo(game);
+        return;
+      }
       attachGhost(game, bestRun);
       liveGhosts = attachLiveGhosts(game);
       // Seed the per-lap delta baseline from the personal best so lap 1 already
@@ -845,6 +926,8 @@ window.addEventListener("hexgl:wrongway", (event) => {
 });
 window.addEventListener("hexgl:lap", async (event) => {
   const detail = event.detail;
+  // Demo laps never touch the leaderboard or session-best readouts.
+  if (demoMode) return;
   // Track the session best lap live (the per-lap delta baseline).
   if (detail.time > 0) {
     const improved = sessionBestLap == null || detail.time < sessionBestLap;
@@ -914,11 +997,19 @@ $("start-button").addEventListener("click", () => {
   resumeAudio();
   if (!$("launch-screen").classList.contains("is-hidden")) bootGame();
 });
+$("demo-button").addEventListener("click", () => {
+  resumeAudio();
+  if (!$("launch-screen").classList.contains("is-hidden")) bootGame({ demo: true });
+});
+$("demo-take").addEventListener("click", takeControl);
+$("demo-exit").addEventListener("click", exitDemo);
 let autoLaunch = false;
+let demoLaunch = false;
 try { autoLaunch = sessionStorage.getItem("ool-auto-launch") === "1"; } catch (_) { /* storage blocked */ }
+try { demoLaunch = sessionStorage.getItem("ool-demo-launch") === "1"; } catch (_) { /* storage blocked */ }
 if (autoLaunch) {
-  try { sessionStorage.removeItem("ool-auto-launch"); } catch (_) { /* ignore */ }
-  bootGame();
+  try { sessionStorage.removeItem("ool-auto-launch"); sessionStorage.removeItem("ool-demo-launch"); } catch (_) { /* ignore */ }
+  bootGame({ demo: demoLaunch });
 }
 
 // Safety net: never leave throttle/brake/steer held after losing focus.

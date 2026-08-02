@@ -38,6 +38,9 @@ button { color: inherit; }
 .primary-button span { float: right; font-size: 20px; line-height: 12px; }
 .primary-button:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(111,247,238,.18); }
 .control-note { padding: 14px 4px 2px; color: var(--muted); font-size: 11px; }
+.demo-launch-button { text-align: center; }
+.demo-launch-button span { float: none; font-size: 14px; margin-left: 6px; }
+.demo-launch-button:hover { border-color: var(--orange); color: #ffd2a8; }
 .launch-footer { position: absolute; left: 0; right: 0; bottom: 28px; display: flex; justify-content: center; gap: 28px; }
 .text-button { border: 0; padding: 10px; color: var(--muted); background: transparent; cursor: pointer; font-size: 11px; transition: color .15s ease; }
 .text-button:hover, .modal-card a { color: var(--cyan); }
@@ -94,9 +97,26 @@ button { color: inherit; }
 .downgrade-note:hover { border-color: var(--orange); color: #ffd2a8; }
 .wrong-way { position: absolute; z-index: 9; left: 50%; top: 24%; transform: translateX(-50%); padding: 8px 26px 8px 32px; border: 2px solid rgba(255,110,80,.85); background: rgba(64,8,4,.78); box-shadow: 0 0 30px rgba(255,110,80,.25); color: #ff9070; font: clamp(30px, 7vw, 58px)/1 Bebas, sans-serif; letter-spacing: .24em; text-indent: .24em; pointer-events: none; white-space: nowrap; animation: wrongway-flash .8s ease-in-out infinite; }
 @keyframes wrongway-flash { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+
+/* Demo screen: attract-mode overlay shown while the autopilot drives. */
+.demo-screen { position: absolute; inset: 0; z-index: 8; pointer-events: none; }
+#race-screen.is-demo .race-bottom { display: none; }
+#race-screen.is-demo .control-toggle { display: none; }
+.demo-top { position: absolute; top: 22px; left: 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.demo-badge { padding: 4px 9px; border: 1px solid rgba(255,180,84,.55); background: rgba(40,22,4,.78); color: var(--orange); font: 12px Bebas, sans-serif; letter-spacing: .16em; }
+.demo-pill { padding: 4px 9px; border: 1px solid rgba(111,247,238,.5); background: rgba(2,10,14,.72); color: var(--cyan); font: 11px Bebas, sans-serif; letter-spacing: .14em; animation: demo-pulse 1.6s ease-in-out infinite; }
+@keyframes demo-pulse { 0%, 100% { box-shadow: 0 0 0 rgba(111,247,238,0); } 50% { box-shadow: 0 0 12px rgba(111,247,238,.45); } }
+.demo-controls { position: absolute; left: 50%; bottom: 30%; transform: translateX(-50%); display: grid; gap: 8px; width: min(320px, calc(100vw - 48px)); text-align: center; pointer-events: auto; }
+.demo-caption { margin: 0 0 6px; color: rgba(233,245,244,.72); font-size: 11px; text-shadow: 0 2px 12px #000; }
+.demo-button { width: 100%; border: 1px solid var(--line); padding: 12px 16px; background: rgba(111,247,238,.06); color: var(--ink); text-align: center; cursor: pointer; font-weight: 700; transition: border-color .15s ease, background .15s ease, transform .15s ease; }
+.demo-button span { float: none; font-size: 14px; margin-left: 6px; }
+.demo-button:hover { border-color: var(--cyan); background: rgba(111,247,238,.14); transform: translateY(-1px); }
+.demo-button-primary { border-color: var(--cyan); background: var(--cyan); color: #041316; }
+.demo-button-primary:hover { border-color: var(--cyan); background: #9efbf4; color: #041316; box-shadow: 0 10px 28px rgba(111,247,238,.18); }
 @media (prefers-reduced-motion: reduce) {
   .wrong-way { animation: none; }
   .lap-delta { animation: none; }
+  .demo-pill { animation: none; }
   /* Collapse decorative animations/transitions for motion-sensitive users. */
   *, *::before, *::after {
     animation-duration: .001s !important;
@@ -176,6 +196,10 @@ button { color: inherit; }
   .race-topbar { top: 9px; left: 9px; right: 9px; }
   .ghost-delta { top: 26px; left: 12px; font-size: 10px; padding: 3px 7px; }
   .lap-delta { top: 44px; left: 12px; font-size: 10px; padding: 3px 7px; }
+  .demo-top { top: 9px; left: 12px; gap: 5px; }
+  .demo-badge, .demo-pill { font-size: 10px; padding: 3px 7px; }
+  .demo-controls { bottom: 26%; width: min(280px, calc(100vw - 32px)); }
+  .demo-caption { font-size: 10px; }
   .quality-copy em { white-space: normal; }
   .replay-badge { top: 26px; right: 12px; font-size: 10px; padding: 3px 7px; }
   .downgrade-note { top: 26px; font-size: 9px; padding: 3px 8px; }

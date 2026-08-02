@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>demo probe</title>
+</head>
+<body>
+<div id="result">RUNNING</div>
+<script>
+  try {
+    sessionStorage.setItem("ool-auto-launch", "1");
+    sessionStorage.setItem("ool-demo-launch", "1");
+  } catch (e) { /* ignore */ }
+  window.addEventListener("load", () => {
+    const iframe = document.createElement("iframe");
+    iframe.src = "index.html";
+    iframe.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;border:0";
+    document.body.appendChild(iframe);
+    const out = (s) => { document.getElementById("result").textContent = s; };
+    const record = [];
+    const bootStart = Date.now();
+    const poll = window.setInterval(() => {
+      let r = {};
+      try {
+        const w = iframe.contentWindow;
+        const hex = w.hexGL;
+        if (hex) {
+          const sc = hex.components && hex.components.shipControls;
+          const gp = hex.gameplay;
+          const demoEl = w.document.getElementById("demo-screen");
+          const pill = w.document.getElementById("demo-mode-pill");
+          r.hasGame = true;
+          r.step = gp ? gp.step : -1;
+          r.demoVisible = demoEl ? !demoEl.classList.contains("is-hidden") : null;
+          r.pill = pill ? pill.textContent : null;
+          if (sc) {
+            const p = sc.dummy.position;
+            r.distFromSpawn = Math.round(Math.hypot(p.x + 2268, p.z + 886));
+            r.speed = Math.round(sc.speed * 100) / 100;
+            r.destroyed = sc.destroyed;
+          }
+        }
+      } catch (e) { r.error = String(e); }
+      record.push(r);
+      const racing = record.some((x) => x.step === 4 && x.speed > 0.5);
+      const moved = record.some((x) => x.distFromSpawn > 400);
+      const alive = !record.some((x) => x.destroyed === true);
+      const demo = record.some((x) => x.demoVisible === true);
+      const elapsed = Date.now() - bootStart;
+      out(JSON.stringify({ elapsed, racing, moved, alive, demo, last: record[record.length - 1] }));
+      if ((racing && moved && alive && demo && record.length > 10) || elapsed > 45000) {
+        window.clearInterval(poll);
+        out("DONE " + JSON.stringify({ elapsed, racing, moved, alive, demo, record }));
+      }
+    }, 500);
+    // Expose a live summary for the browser agent.
+    window.__probeState = function () {
+      return document.getElementById("result").textContent;
+    };
+  });
+</script>
+</body>
+</html>

@@ -247,6 +247,16 @@ bkcore.hexgl.HexGL.prototype.initGameplay = function()
 		pixelRatio: this.track.pixelRatio,
 		track: this.track,
 			onFinish: function() {
+				// Demo / attract mode never shows the finish card: restart the race
+				// after a short beat so the showcase loops forever (the autopilot
+				// re-syncs to the racing line via its nearest-waypoint scan).
+				if(self.mode == 'demo')
+				{
+					window.setTimeout(function(){
+						if(self.mode == 'demo') self.reset();
+					}, 900);
+					return;
+				}
 				self.components.shipControls.terminate();
 				self.displayScore(this.finishTime, this.lapTimes);
 			},

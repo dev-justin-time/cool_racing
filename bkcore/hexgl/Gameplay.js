@@ -20,6 +20,7 @@ bkcore.hexgl.Gameplay = function(opts)
 	this.modes = {
 		'timeattack':null,
 		'survival':null,
+		'demo':null,
 		'replay':null
 	};
 	this.mode = opts.mode == undefined || !(opts.mode in this.modes) ? "timeattack" : opts.mode;
@@ -103,10 +104,13 @@ bkcore.hexgl.Gameplay = function(opts)
 			{
 				self.lap++;
 				self.currentLapTime = 0;
-				self.hud != null && self.hud.updateLap(self.lap, self.maxLaps);
-
-				if(self.lap == self.maxLaps)
-					self.hud != null && self.hud.display("Final lap", 0.5);
+				// Demo mode races forever; don't render a lap counter against Infinity.
+				if(isFinite(this.maxLaps))
+				{
+					self.hud != null && self.hud.updateLap(self.lap, self.maxLaps);
+					if(self.lap == self.maxLaps)
+						self.hud != null && self.hud.display("Final lap", 0.5);
+				}
 			}
 		}
 		else if(cp != -1 && cp != self.previousCheckPoint)
@@ -127,6 +131,10 @@ bkcore.hexgl.Gameplay = function(opts)
 			self.end(self.results.DESTROYED);
 		}
 	};
+
+	// Demo mode races the same as timeattack but never finishes; the shell's
+	// attract loop decides when to reset (HexGL.initGameplay onFinish branch).
+	this.modes.demo = this.modes.timeattack;
 
 	this.modes.replay = function()
 	{
@@ -162,6 +170,8 @@ bkcore.hexgl.Gameplay.prototype.start = function(opts)
 	this.completedLapTraces = [];
 	this.nextTraceAt = 0;
 	this.hasPreviousPosition = false;
+
+	this.maxLaps = this.mode == 'demo' ? Infinity : 3;
 
 	this.shipControls.reset(this.track.spawn, this.track.spawnRotation);
 	this.shipControls.active = false;
@@ -203,7 +213,8 @@ bkcore.hexgl.Gameplay.prototype.start = function(opts)
 		this.hud.resetTime();
 		this.hud.updateLapTime(0, null);
 		this.hud.display("3", 0.9);
-		this.hud.updateLap(this.lap, this.maxLaps);
+		if(isFinite(this.maxLaps))
+			this.hud.updateLap(this.lap, this.maxLaps);
 	}
 }
 
