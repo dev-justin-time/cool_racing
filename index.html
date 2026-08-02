@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>OOL Racing</title>
+  <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="stylesheet" href="styles.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "@websim/websim-socket": "https://esm.websim.com/@websim/websim-socket"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main id="app">
+    <section id="launch-screen" class="screen">
+      <div class="launch-grid"></div>
+      <div class="brand-lockup">
+        <span class="eyebrow">ANTI-GRAVITY // CITYSCAPE</span>
+        <h1>OOL<span>®</span></h1>
+        <p>Find the clean line.</p>
+      </div>
+      <div class="launch-card">
+        <div class="launch-meta"><span>TIME ATTACK</span><span id="best-time">BEST —:—.—</span></div>
+        <button id="start-button" class="primary-button" type="button">Launch <span>↗</span></button>
+        <div class="control-note" id="control-note">ARROWS steer · ↑ accelerate · Q / E air-brake</div>
+      </div>
+      <button id="credits-button" class="text-button" type="button">BKcore / HexGL credits</button>
+    </section>
+
+    <section id="race-screen" class="screen is-hidden">
+      <div id="main"></div>
+      <div id="overlay"></div>
+      <div id="loading-screen" class="loading-screen" role="status" aria-live="polite">
+        <div class="loading-mark">OOL</div>
+        <div class="loading-track"><span id="loading-progress"></span></div>
+        <div id="loading-label" class="loading-label">Loading Cityscape… 0%</div>
+      </div>
+      <div class="race-topbar">
+        <div class="race-status"><span id="racers-now" class="is-hidden">1 RACING NOW</span><span id="connection-status" class="is-hidden">LOCAL RUN</span><span id="ghost-status" class="is-hidden">NO GHOST</span><button id="control-toggle" class="control-toggle" type="button">TOUCH</button></div>
+      </div>
+      <div id="ghost-delta" class="ghost-delta is-hidden" aria-hidden="true"></div>
+      <div id="replay-badge" class="replay-badge is-hidden" role="status">REPLAY · WATCHING YOUR RUN</div>
+      <div id="wrong-way" class="wrong-way is-hidden" role="status" aria-live="assertive">WRONG WAY</div>
+      <div class="race-bottom">
+        <div class="hint"><span class="keycap">ESC</span> pause</div>
+        <div class="ghost-chip"><span class="ghost-dot"></span><span id="ghost-name">Best ghost loading…</span></div>
+      </div>
+      <div id="ghost-label" class="floating-label is-hidden"></div>
+      <div id="touch-controls" aria-hidden="true">
+        <div class="touch-joystick" data-touch-control="joystick">
+          <div class="joystick-ring"><div class="joystick-knob"></div></div>
+          <span>STEER</span>
+        </div>
+        <div class="touch-actions">
+          <button class="touch-action accelerate" data-touch-control="accelerate" type="button" aria-label="Accelerate"><span>ACCEL</span><b>▲</b></button>
+          <button class="touch-action brake" data-touch-control="brake" type="button" aria-label="Brake"><span>BRAKE</span><b>▼</b></button>
+        </div>
+      </div>
+      <div id="finish-screen" class="finish-card is-hidden">
+        <div class="eyebrow">RUN COMPLETE</div>
+        <div id="finish-result" class="finish-time">—:—.—</div>
+        <div id="finish-message" class="finish-message">Uploading run telemetry…</div>
+        <div id="finish-laps" class="finish-laps"></div>
+        <button id="restart-button" class="primary-button" type="button">Race again <span>↗</span></button>
+        <button id="replay-button" class="secondary-button" type="button">Watch your run <span>↗</span></button>
+      </div>
+      <div id="pause-menu" class="modal is-hidden" role="dialog" aria-modal="true" aria-label="Game paused">
+        <div class="modal-card pause-card">
+          <div class="eyebrow">RACE SUSPENDED</div>
+          <h2>Paused</h2>
+          <button id="resume-button" class="primary-button" type="button">Resume <span>↗</span></button>
+          <button id="mute-button" class="secondary-button" type="button"><span id="mute-label">SOUND ON</span></button>
+          <button id="pause-restart-button" class="secondary-button" type="button">Restart race</button>
+          <button id="quit-button" class="secondary-button" type="button">Quit to menu</button>
+          <p class="pause-hint">ESC toggles pause · the race timer freezes while paused</p>
+        </div>
+      </div>
+    </section>
+
+    <aside id="leaderboard" class="leaderboard" aria-live="polite">
+      <div class="leaderboard-head"><span>GLOBAL TOP 5</span><span id="leaderboard-track">CITYSCAPE</span></div>
+      <div id="personal-best" class="personal-best">PB —:—.———</div>
+      <div id="leaderboard-list"><div class="leaderboard-empty">No global runs yet.</div></div>
+    </aside>
+
+    <div id="credits-panel" class="modal is-hidden">
+      <div class="modal-card">
+        <button id="close-credits" class="close-button" type="button" aria-label="Close credits">×</button>
+        <div class="eyebrow">BUILT ON</div>
+        <h2>HexGL</h2>
+        <p>Original futuristic racing game by Thibaut Despoulain / BKcore. This project keeps the original ships, Cityscape track, geometry, textures, sound, and Three.js 50dev runtime.</p>
+        <a href="https://github.com/BKcore/HexGL" target="_blank" rel="noreferrer">github.com/BKcore/HexGL ↗</a>
+        <p class="modal-small">MIT licensed source and assets. Full attribution in <code>CREDITS.md</code>.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- HexGL's original runtime intentionally stays on its Three.js 50dev API. -->
+  <script src="libs/Three.dev.js"></script>
+  <script src="libs/ShaderExtras.js"></script>
+  <script src="libs/postprocessing/EffectComposer.js"></script>
+  <script src="libs/postprocessing/RenderPass.js"></script>
+  <script src="libs/postprocessing/BloomPass.js"></script>
+  <script src="libs/postprocessing/ShaderPass.js"></script>
+  <script src="libs/postprocessing/MaskPass.js"></script>
+  <script src="libs/Detector.js"></script>
+  <script src="libs/Stats.js"></script>
+  <script src="bkcore.coffee/controllers/TouchController.js"></script>
+  <script src="bkcore.coffee/controllers/OrientationController.js"></script>
+  <script src="bkcore.coffee/controllers/GamepadController.js"></script>
+  <script src="bkcore.coffee/Timer.js"></script>
+  <script src="bkcore.coffee/ImageData.js"></script>
+  <script src="bkcore.coffee/Utils.js"></script>
+  <script src="bkcore/threejs/RenderManager.js"></script>
+  <script src="bkcore/threejs/Shaders.js"></script>
+  <script src="bkcore/threejs/Particles.js"></script>
+  <script src="bkcore/threejs/Loader.js"></script>
+  <script src="bkcore/Audio.js"></script>
+  <script src="bkcore/hexgl/HUD.js"></script>
+  <script src="bkcore/hexgl/RaceData.js"></script>
+  <script src="bkcore/hexgl/ShipControls.js"></script>
+  <script src="bkcore/hexgl/ShipEffects.js"></script>
+  <script src="bkcore/hexgl/CameraChase.js"></script>
+  <script src="bkcore/hexgl/Gameplay.js"></script>
+  <script src="bkcore/hexgl/tracks/Cityscape.js"></script>
+  <script src="bkcore/hexgl/HexGL.js"></script>
+  <script type="module" src="websim-layer.js"></script>
+  <script type="module" src="game-app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "collections": {
+    "hexgl_lap_best": {
+      "fields": {
+        "track": "string",
+        "best_lap_ms": "number",
+        "best_lap_trace": "json",
+        "sample_count": "number"
+      }
+    }
+  }
+}
